@@ -1,0 +1,148 @@
+extends RefCounted
+## GameSnapshotReader - centralizes live game-object reads into small snapshots.
+##
+## The evaluator and the debug capture both consume these snapshots, so the set of
+## game fields the mod depends on is defined in exactly one place. Snapshots are
+## plain Dictionaries (JSON-serializable) with this shape:
+##
+##   run snapshot:
+##     {
+##       "kind": "run",
+##       "trainer_id": String,            # only when the run exposes it
+##       "current_round": int,            # only when the run exposes it
+##       "team": [monster, ...],          # only when the run exposes it
+##       "bench": [monster, ...],         # only when the run exposes it
+##     }
+##   battle snapshot: the run snapshot fields plus
+##     {
+##       "kind": "battle",
+##       "battle_over": bool,             # only when the simulation data exposes it
+##       "battle_units": [unit, ...],     # only when the simulation data exposes it
+##     }
+##
+## monster: {"name_key": String, "level": int} with each key present only when the
+## live monster exposes it. A null/invalid monster becomes {} so list positions are
+## preserved (Big Dog resolves species by slot index).
+## unit: {"team_id": int, "slot_index": int, "shield_granted": float}, same rule.
+##
+## Unknown values are represented by an ABSENT key, never a default. Defaults belong
+## to the rules (the evaluator), not to the reader.
+##
+## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
+##   run: trainer_id, current_round, team, bench
+##   monster: data.name_key, level
+##   battle: simulation.data.battle_over,
+##           simulation.data.battle_units[].{team_id, slot_index, shield_granted}
+
+const KIND_RUN := "run"
+const KIND_BATTLE := "battle"
+
+# Shared property probe (mod_main passes its _has_property Callable).
+var _has_prop: Callable
+
+
+func _init(has_property_fn: Callable) -> void:
+	_has_prop = has_property_fn
+
+
+## Snapshot of the run. Returns {} when the run is null or invalid.
+func read_run(run) -> Dictionary:
+	if not _is_live(run):
+		return {}
+	return _read_run_fields(run, KIND_RUN)
+
+
+## Snapshot of the run plus the battle simulation fields. Returns {} when the state
+## is null or invalid. Run fields are omitted when the run is unavailable, so the
+## battle fields can still be captured.
+func read_battle(state, run) -> Dictionary:
+	if not _is_live(state):
+		return {}
+	var snapshot := _read_run_fields(run, KIND_BATTLE) if _is_live(run) else {"kind": KIND_BATTLE}
+
+	var sim = state.get("simulation") if _has_prop.call(state, "simulation") else null
+	if not _is_live(sim):
+		return snapshot
+	var data = sim.get("data") if _has_prop.call(sim, "data") else null
+	if not _is_live(data):
+		return snapshot
+
+	if _has_prop.call(data, "battle_over"):
+		snapshot["battle_over"] = bool(data.get("battle_over"))
+	if _has_prop.call(data, "battle_units"):
+		snapshot["battle_units"] = _read_battle_units(data.get("battle_units"))
+	return snapshot
+
+
+## Is this battle snapshot complete enough to evaluate? Used before consuming the
+## one-time battle-completion notification so a partial read is retried next poll.
+func is_battle_snapshot_usable(snapshot: Dictionary) -> bool:
+	if snapshot.is_empty():
+		return false
+	if not snapshot.has("trainer_id"):
+		return false
+	if not snapshot.get("team") is Array:
+		return false
+	if not snapshot.get("battle_units") is Array:
+		return false
+	return true
+
+
+## Species name_key of a snapshot monster entry, or "" when unavailable.
+static func monster_species_key(entry) -> String:
+	if not entry is Dictionary:
+		return ""
+	return str(entry.get("name_key", ""))
+
+
+func _read_run_fields(run, kind: String) -> Dictionary:
+	var snapshot := {"kind": kind}
+	if not _is_live(run):
+		return snapshot
+	if _has_prop.call(run, "trainer_id"):
+		snapshot["trainer_id"] = str(run.get("trainer_id"))
+	if _has_prop.call(run, "current_round"):
+		snapshot["current_round"] = int(run.get("current_round"))
+	for list_name in ["team", "bench"]:
+		if _has_prop.call(run, list_name):
+			snapshot[list_name] = _read_monsters(run.get(list_name))
+	return snapshot
+
+
+func _read_monsters(monsters) -> Array:
+	var out: Array = []
+	if not monsters is Array:
+		return out
+	for monster in monsters:
+		var entry := {}
+		if _is_live(monster):
+			if _has_prop.call(monster, "data"):
+				var data = monster.get("data")
+				if _is_live(data) and _has_prop.call(data, "name_key"):
+					entry["name_key"] = str(data.get("name_key"))
+			if _has_prop.call(monster, "level"):
+				entry["level"] = int(monster.get("level"))
+		out.append(entry)
+	return out
+
+
+func _read_battle_units(units) -> Array:
+	var out: Array = []
+	if not units is Array:
+		return out
+	for unit in units:
+		if not _is_live(unit):
+			continue
+		var entry := {}
+		if _has_prop.call(unit, "team_id"):
+			entry["team_id"] = int(unit.get("team_id"))
+		if _has_prop.call(unit, "slot_index"):
+			entry["slot_index"] = int(unit.get("slot_index"))
+		if _has_prop.call(unit, "shield_granted"):
+			entry["shield_granted"] = float(unit.get("shield_granted"))
+		out.append(entry)
+	return out
+
+
+func _is_live(obj) -> bool:
+	return obj != null and is_instance_valid(obj)

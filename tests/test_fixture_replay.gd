@@ -5,9 +5,12 @@ extends "test_runner.gd"
 ##   - Curated: {"steps": [ {kind, trainer_id, current_round, team, bench,
 ##       battle_over, battle_units, expect: [...]} ]}. Each step asserts the exact
 ##       set of award ids ("expect") so the rules are pinned to documented data.
-##   - Captured: a flat snapshot written by mod_main's BRAINROT_DUMP_DIR
-##       hook (a single {kind, ...} object, no "steps"/"expect"). These assert only
-##       that the evaluator accepts the real shape without crashing.
+##   - Captured: a flat snapshot written by the BRAINROT_DUMP_DIR hook (a single
+##       {kind, ...} object, no "steps"/"expect"). These assert only that the
+##       evaluator accepts the real shape without crashing.
+##
+## Fixture steps are converted straight into the snapshot Dictionaries the evaluator
+## consumes, so the fixture format doubles as the snapshot contract.
 
 const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
 const TestHelpers = preload("test_helpers.gd")
@@ -39,43 +42,47 @@ func _fixture_files() -> Array:
 	return out
 
 
-func _monster(data: Dictionary):
-	return TestHelpers.FakeObject.new({
-		"data": TestHelpers.FakeObject.new({"name_key": str(data.get("name_key", ""))}),
-		"level": int(data.get("level", 1)),
-	})
-
-
 func _monsters(list) -> Array:
 	var out: Array = []
 	if list is Array:
 		for item in list:
 			if item is Dictionary:
-				out.append(_monster(item))
+				out.append({
+					"name_key": str(item.get("name_key", "")),
+					"level": int(item.get("level", 1)),
+				})
 	return out
 
 
-func _run(step: Dictionary):
-	return TestHelpers.FakeObject.new({
+func _units(list) -> Array:
+	var out: Array = []
+	if list is Array:
+		for unit in list:
+			if unit is Dictionary:
+				out.append({
+					"team_id": int(unit.get("team_id", 0)),
+					"slot_index": int(unit.get("slot_index", 0)),
+					"shield_granted": float(unit.get("shield_granted", 0.0)),
+				})
+	return out
+
+
+func _run_snapshot(step: Dictionary) -> Dictionary:
+	return {
+		"kind": "run",
 		"trainer_id": str(step.get("trainer_id", "")),
 		"current_round": int(step.get("current_round", 0)),
 		"team": _monsters(step.get("team", [])),
 		"bench": _monsters(step.get("bench", [])),
-	})
+	}
 
 
-func _state(step: Dictionary):
-	var units: Array = []
-	var raw = step.get("battle_units", [])
-	if raw is Array:
-		for unit in raw:
-			if unit is Dictionary:
-				units.append(TestHelpers.battle_unit(
-					int(unit.get("team_id", 0)),
-					int(unit.get("slot_index", 0)),
-					float(unit.get("shield_granted", 0.0))
-				))
-	return TestHelpers.battle_state(units, bool(step.get("battle_over", true)))
+func _battle_snapshot(step: Dictionary) -> Dictionary:
+	var snapshot := _run_snapshot(step)
+	snapshot["kind"] = "battle"
+	snapshot["battle_over"] = bool(step.get("battle_over", true))
+	snapshot["battle_units"] = _units(step.get("battle_units", []))
+	return snapshot
 
 
 func _sorted_ids(earned: Array) -> Array:
@@ -116,20 +123,16 @@ func _replay_file(path: String) -> void:
 		steps = [parsed]
 
 	var clock = TestHelpers.TestClock.new()
-	var evaluator = AchievementEvaluator.new(
-		func(obj, prop): return TestHelpers.probe(obj, prop),
-		clock.now
-	)
+	var evaluator = AchievementEvaluator.new(clock.now)
 
 	for step in steps:
 		if not step is Dictionary:
 			continue
-		var run = _run(step)
 		var earned: Array
 		if str(step.get("kind", "run")) == "battle":
-			earned = evaluator.poll_battle(_state(step), run)
+			earned = evaluator.poll_battle(_battle_snapshot(step))
 		else:
-			earned = evaluator.poll(run)
+			earned = evaluator.poll(_run_snapshot(step))
 
 		if step.has("expect"):
 			assert_eq(_sorted_ids(earned), _sorted_expected(step), "fixture step: " + path)

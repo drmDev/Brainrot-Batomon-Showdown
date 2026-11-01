@@ -72,13 +72,53 @@ static func run(trainer_id: String, day: int, team: Array = [], bench: Array = [
 	})
 
 
-## Build a battle unit fake for poll_battle.
+## Build a battle unit fake for the snapshot reader tests.
 static func battle_unit(team_id: int, slot_index: int, shield_granted: float):
 	return FakeObject.new({
 		"team_id": team_id,
 		"slot_index": slot_index,
 		"shield_granted": shield_granted,
 	})
+
+
+## Build a run snapshot dictionary (the evaluator's input shape).
+static func run_snapshot(trainer_id: String, day: int, team: Array = [], bench: Array = []) -> Dictionary:
+	return {
+		"kind": "run",
+		"trainer_id": trainer_id,
+		"current_round": day,
+		"team": team,
+		"bench": bench,
+	}
+
+
+## Build a monster snapshot entry.
+static func monster_snapshot(name_key: String, level: int = 1) -> Dictionary:
+	return {"name_key": name_key, "level": level}
+
+
+## Build a battle unit snapshot entry.
+static func battle_unit_snapshot(team_id: int, slot_index: int, shield_granted: float) -> Dictionary:
+	return {"team_id": team_id, "slot_index": slot_index, "shield_granted": shield_granted}
+
+
+## Build a battle snapshot dictionary (the evaluator's poll_battle input shape).
+static func battle_snapshot(
+	trainer_id: String,
+	day: int,
+	team: Array,
+	units: Array,
+	battle_over: bool = true
+) -> Dictionary:
+	return {
+		"kind": "battle",
+		"trainer_id": trainer_id,
+		"current_round": day,
+		"team": team,
+		"bench": [],
+		"battle_over": battle_over,
+		"battle_units": units,
+	}
 
 
 ## Build a battle state fake: state.simulation.data.battle_units + battle_over.

@@ -3,7 +3,9 @@
 ## Summary
 Brain Rot (`brain_rot`) is a standalone GDScript mod for **Batomon Showdown**. Achievements — detect, persist, and display achievement unlocks — are the first feature; more "fun" features are planned, so keep new code modular rather than achievement-specific where practical.
 
-The achievement system polls the live run and battle state every 500 ms, evaluates achievements, writes completion to `achievements.json` at the mod root, and shows a bottom-right toast when the Achievement Notifications setting is enabled. It is self-contained and does not depend on other mods.
+The achievement system polls the live run and battle state every 500 ms, reads them into plain snapshot Dictionaries (`game_snapshot_reader.gd`), evaluates achievements from those snapshots, writes completion to `achievements.json` at the mod root, and shows a bottom-right toast when the Achievement Notifications setting is enabled. It is self-contained and does not depend on other mods.
+
+Separation of concerns: only `game_snapshot_reader.gd` touches live game objects; the evaluator is rules only; `battle_completion_detector.gd` owns when battle evaluation happens; `debug/state_capture.gd` owns debug dumps; `mod_main.gd` owns initialization, settings, polling, run-transition detection, and coordination.
 
 ## Previous Mod
 Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalone mod**. Creature Comforts contains a lot of solid, working code (game-state access, node paths, signals, HUD panels, persistence, test tooling) that should be reused to ease implementation.
@@ -35,19 +37,21 @@ Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalon
 - **So I started blasting** - Gentleman owns a level-2 Rhizuka on Day 5 or earlier (`run.current_round`), checked from team + bench.
 - **Oh Yeah!** - Twins double-evolution: Beetbud (level 2) -> two level-3 Beetdowns.
 - **Herd U Liek Mudkipz** - Twins double-evolution: Frillet (level 2) -> two level-3 Dewlotls.
-- **Big Dog, Best Dog** - a Cinnabark unit generates more than 1,000,000 shield in a single battle, read from `simulation.data.battle_units` (`team_id == 0`, `slot_index`, `shield_granted`) with species resolved through the player run's team slot.
+- **Big Dog, Best Dog** - a single Cinnabark unit generates more than 1,000,000 shield in a single battle, read from `simulation.data.battle_units` (`team_id == 0`, `slot_index`, `shield_granted`) with species resolved through the player run's team slot. Per-unit semantics: shield is not summed across records in the same slot.
 
 ## Files
 | File | Responsibility |
 |---|---|
 | `mod.json` | Mod identity (`brain_rot`), version, description, and the `achievement_notifications` setting. |
-| `mod_main.gd` | Loader lifecycle, settings, 500 ms polling, run/battle achievement evaluation, award persistence, and toast display. |
-| `achievements/achievement_evaluator.gd` | Poll-based achievement detection (`poll(run)` and `poll_battle(state, run)`); returns structured achievements without persistence or UI side effects. |
+| `mod_main.gd` | Loader lifecycle, settings, 500 ms polling, run-transition detection, coordination of reader/evaluator/store/panel/detector/capture, award persistence, and toast display. |
+| `achievements/game_snapshot_reader.gd` | The only place that reads live game objects; produces plain snapshot Dictionaries (run and battle) with absent keys for unknown values. |
+| `achievements/achievement_evaluator.gd` | Rules only: `poll(run_snapshot)`, `poll_battle(battle_snapshot)`, `reset_run()`; returns structured achievements without persistence or UI side effects. |
 | `achievements/achievement_store.gd` | JSON persistence for completion at the mod root (`achievements.json`); tolerates missing or corrupt files. |
 | `achievements/achievement_panel.gd` | Bottom-right achievement toast; auto-hides after ~4 seconds. |
-| `achievements/battle_completion_detector.gd` | Reports each battle's completion exactly once via `simulation.data.battle_over`. |
+| `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
+| `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
 | `hud/comfort_panel.gd` | Shared dark-navy/gold panel base (palette, font, resize plumbing) used by mod HUD panels, including the toast. |
-| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`. |
+| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites); exits with the runner's exit code. |
 | `dev/run_tests_isolated.ps1` | Runs each test method in its own Godot process so a crash fails only that test. |
@@ -55,10 +59,29 @@ Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalon
 | `dev/fixtures/` | Curated/captured run and battle snapshots replayed by `test_fixture_replay.gd`. |
 | `dev/QUALITY.md` | Test strategy, branch matrix, mutation score, and framework evaluation. |
 
+### Locating the gitignored dev files
+`.gitignore` has `dev/*`, so the `dev/` scripts and `dev/QUALITY.md` are **gitignored but
+present on disk**. Tools that respect `.gitignore` (including some directory listings)
+will not show them, which makes them look missing. They are not missing — read or run
+them by path:
+
+- Read them directly, e.g. `dev/QUALITY.md`, `dev/mutate_tests.ps1`.
+- List them with a shell that ignores `.gitignore`:
+  `cmd /c dir /a "dev"` or `powershell -NoProfile -Command "Get-ChildItem dev -Force"`.
+- Run them from the mod root as documented in **Verification** below.
+- Do not "restore" or recreate them; if a path truly does not exist, ask before adding it.
+- `dev/fixtures/` is un-ignored (`!dev/fixtures/`) because `tests/test_fixture_replay.gd`
+  depends on it; keep it tracked. `dev/dev_config.gd` is also un-ignored.
+- `_agent.md` and `plans/` are gitignored too, so they are local-only as well.
+
 ## Working conventions
 - **Versioning:** on every edit, bump the version by `0.0001` in BOTH places: `mod.json` (`version`) and `mod_main.gd` (`const VERSION`). (Note: the on-disk format is four segments, e.g. `0.0.0.4`; bump the last segment.)
 - Verify game identifiers/properties from source or runtime evidence; never invent APIs.
-- Keep the evaluator independent of live game objects, file writing, and UI drawing.
+- Keep the evaluator independent of live game objects, file writing, and UI drawing. All live-object reads belong in `game_snapshot_reader.gd`.
+- Snapshots use absent keys for unknown values; defaults belong to the rules, not the reader.
+- Battle evaluation timing belongs to `battle_completion_detector.gd`; the evaluator's `poll_battle` is a pure rule check.
+- Persistence must not depend on the panel existing or notifications being enabled.
+- Call `reset_run()` at verified run transitions (inferred in `mod_main` from run identity, trainer, and day regression).
 - The toast is gated by the Achievement Notifications setting.
 - Retain the 500 ms polling interval unless measurements justify changing it.
 - Tests must stay deterministic: inject `TestHelpers.TestClock` instead of relying on wall-clock time.
@@ -76,7 +99,7 @@ The check scripts live in `dev/` and already point at the Godot console binary
 # 1. Parse-check every .gd file (mod_main.gd, achievements/, hud/, tests/, ...)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\gd_checks.ps1
 
-# 2. Run the headless unit-test suite (all 5 suites)
+# 2. Run the headless unit-test suite (all 7 suites)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\run_tests.ps1
 ```
 

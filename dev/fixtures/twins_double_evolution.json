@@ -1,0 +1,24 @@
+{
+	"name": "twins_double_evolution",
+	"steps": [
+		{
+			"kind": "run",
+			"trainer_id": "twins",
+			"current_round": 3,
+			"team": [{"name_key": "monster.name.beetbud", "level": 2}],
+			"bench": [],
+			"expect": []
+		},
+		{
+			"kind": "run",
+			"trainer_id": "twins",
+			"current_round": 3,
+			"team": [
+				{"name_key": "monster.name.beetdown", "level": 3},
+				{"name_key": "monster.name.beetdown", "level": 3}
+			],
+			"bench": [],
+			"expect": ["oh_yeah"]
+		}
+	]
+}

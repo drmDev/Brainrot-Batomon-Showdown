@@ -1,0 +1,13 @@
+{
+	"name": "gentleman_level2_rhizuka",
+	"steps": [
+		{
+			"kind": "run",
+			"trainer_id": "gentleman",
+			"current_round": 3,
+			"team": [{"name_key": "monster.name.rhizuka", "level": 2}],
+			"bench": [],
+			"expect": ["so_i_started_blasting"]
+		}
+	]
+}

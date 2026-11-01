@@ -1,0 +1,201 @@
+extends "test_runner.gd"
+## Unit tests for achievements/game_snapshot_reader.gd.
+
+const GameSnapshotReader = preload("../achievements/game_snapshot_reader.gd")
+const TestHelpers = preload("test_helpers.gd")
+
+const RHIZUKA := "monster.name.rhizuka"
+const CINNABARK := "monster.name.cinnabark"
+
+
+func _new_reader():
+	return GameSnapshotReader.new(func(obj, prop): return TestHelpers.probe(obj, prop))
+
+
+# --- read_run ---
+
+func test_read_run_null_returns_empty() -> void:
+	assert_empty(_new_reader().read_run(null))
+
+
+func test_read_run_captures_identity_and_day() -> void:
+	var run = TestHelpers.run("gentleman", 4, [TestHelpers.monster(RHIZUKA, 2)])
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_eq(snapshot.get("kind"), "run")
+	assert_eq(snapshot.get("trainer_id"), "gentleman")
+	assert_eq(snapshot.get("current_round"), 4)
+
+
+func test_read_run_keeps_team_and_bench_separate() -> void:
+	var run = TestHelpers.run(
+		"twins", 3,
+		[TestHelpers.monster(RHIZUKA, 2)],
+		[TestHelpers.monster(CINNABARK, 3)]
+	)
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_eq(snapshot.get("team").size(), 1)
+	assert_eq(snapshot.get("bench").size(), 1)
+	assert_eq(snapshot["team"][0].get("name_key"), RHIZUKA)
+	assert_eq(snapshot["bench"][0].get("name_key"), CINNABARK)
+
+
+func test_read_run_monster_fields() -> void:
+	var run = TestHelpers.run("gentleman", 3, [TestHelpers.monster(RHIZUKA, 2)])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_eq(entry.get("name_key"), RHIZUKA)
+	assert_eq(entry.get("level"), 2)
+
+
+func test_read_run_missing_keys_stay_absent() -> void:
+	var run = TestHelpers.FakeObject.new({"current_round": 3})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_false(snapshot.has("trainer_id"), "missing trainer_id must stay absent")
+	assert_false(snapshot.has("team"), "missing team must stay absent")
+	assert_false(snapshot.has("bench"), "missing bench must stay absent")
+	assert_eq(snapshot.get("current_round"), 3)
+
+
+func test_read_run_monster_missing_level_stays_absent() -> void:
+	var run = TestHelpers.run("gentleman", 3, [
+		TestHelpers.FakeObject.new({"data": TestHelpers.FakeObject.new({"name_key": RHIZUKA})}),
+	])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_eq(entry.get("name_key"), RHIZUKA)
+	assert_false(entry.has("level"), "missing level must stay absent")
+
+
+func test_read_run_monster_without_data_keeps_level_only() -> void:
+	var run = TestHelpers.run("gentleman", 3, [TestHelpers.FakeObject.new({"level": 2})])
+	var team: Array = _new_reader().read_run(run)["team"]
+	assert_eq(team.size(), 1)
+	assert_false(team[0].has("name_key"), "missing data must not invent a species")
+	assert_eq(team[0].get("level"), 2)
+
+
+func test_read_run_null_monster_preserves_position() -> void:
+	var run = TestHelpers.run("gentleman", 3, [null, TestHelpers.monster(RHIZUKA, 2)])
+	var team: Array = _new_reader().read_run(run)["team"]
+	assert_eq(team.size(), 2)
+	assert_empty(team[0])
+	assert_eq(team[1].get("name_key"), RHIZUKA)
+
+
+func test_read_run_non_array_team_becomes_empty_array() -> void:
+	var run = TestHelpers.FakeObject.new({"trainer_id": "gentleman", "team": "nope", "bench": []})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_true(snapshot.get("team") is Array)
+	assert_empty(snapshot.get("team"))
+
+
+# --- read_battle ---
+
+func test_read_battle_null_state_returns_empty() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	assert_empty(_new_reader().read_battle(null, run))
+
+
+func test_read_battle_merges_run_and_battle_fields() -> void:
+	var run = TestHelpers.run("musician", 3, [TestHelpers.monster(CINNABARK, 3)])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1200000.0)])
+	var snapshot: Dictionary = _new_reader().read_battle(state, run)
+	assert_eq(snapshot.get("kind"), "battle")
+	assert_eq(snapshot.get("trainer_id"), "musician")
+	assert_eq(snapshot.get("current_round"), 3)
+	assert_eq(snapshot.get("team").size(), 1)
+	assert_eq(snapshot.get("battle_over"), true)
+	assert_eq(snapshot.get("battle_units").size(), 1)
+
+
+func test_read_battle_unit_fields() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 1, 1200000.0)])
+	var unit: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_eq(unit.get("team_id"), 0)
+	assert_eq(unit.get("slot_index"), 1)
+	assert_eq(unit.get("shield_granted"), 1200000.0)
+
+
+func test_read_battle_missing_simulation_keeps_run_fields() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var snapshot: Dictionary = _new_reader().read_battle(TestHelpers.FakeObject.new({}), run)
+	assert_eq(snapshot.get("kind"), "battle")
+	assert_eq(snapshot.get("trainer_id"), "musician")
+	assert_false(snapshot.has("battle_over"))
+	assert_false(snapshot.has("battle_units"))
+
+
+func test_read_battle_missing_battle_over_stays_absent() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var data = TestHelpers.FakeObject.new({"battle_units": []})
+	var state = TestHelpers.FakeObject.new({"simulation": TestHelpers.FakeObject.new({"data": data})})
+	var snapshot: Dictionary = _new_reader().read_battle(state, run)
+	assert_false(snapshot.has("battle_over"))
+	assert_true(snapshot.get("battle_units") is Array)
+
+
+func test_read_battle_null_unit_skipped() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([null, TestHelpers.battle_unit(0, 0, 1.0)])
+	assert_eq(_new_reader().read_battle(state, run)["battle_units"].size(), 1)
+
+
+func test_read_battle_non_array_units_becomes_empty_array() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var data = TestHelpers.FakeObject.new({"battle_units": "nope", "battle_over": true})
+	var state = TestHelpers.FakeObject.new({"simulation": TestHelpers.FakeObject.new({"data": data})})
+	var snapshot: Dictionary = _new_reader().read_battle(state, run)
+	assert_true(snapshot.get("battle_units") is Array)
+	assert_empty(snapshot.get("battle_units"))
+
+
+func test_read_battle_without_run_still_captures_battle_fields() -> void:
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	var snapshot: Dictionary = _new_reader().read_battle(state, null)
+	assert_eq(snapshot.get("kind"), "battle")
+	assert_false(snapshot.has("trainer_id"))
+	assert_eq(snapshot.get("battle_over"), true)
+
+
+# --- is_battle_snapshot_usable ---
+
+func test_usable_requires_trainer_team_and_units() -> void:
+	var reader = _new_reader()
+	var run = TestHelpers.run("musician", 3, [TestHelpers.monster(CINNABARK, 3)])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	assert_true(reader.is_battle_snapshot_usable(reader.read_battle(state, run)))
+
+
+func test_usable_false_for_empty_snapshot() -> void:
+	assert_false(_new_reader().is_battle_snapshot_usable({}))
+
+
+func test_usable_false_without_trainer() -> void:
+	var reader = _new_reader()
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	assert_false(reader.is_battle_snapshot_usable(reader.read_battle(state, null)))
+
+
+func test_usable_false_without_team() -> void:
+	var reader = _new_reader()
+	var run = TestHelpers.FakeObject.new({"trainer_id": "musician"})
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	assert_false(reader.is_battle_snapshot_usable(reader.read_battle(state, run)))
+
+
+func test_usable_false_without_battle_units() -> void:
+	var reader = _new_reader()
+	var run = TestHelpers.run("musician", 3, [])
+	var snapshot: Dictionary = reader.read_battle(TestHelpers.FakeObject.new({}), run)
+	assert_false(reader.is_battle_snapshot_usable(snapshot))
+
+
+# --- monster_species_key ---
+
+func test_monster_species_key_reads_name_key() -> void:
+	assert_eq(GameSnapshotReader.monster_species_key({"name_key": RHIZUKA}), RHIZUKA)
+
+
+func test_monster_species_key_empty_for_missing_or_invalid() -> void:
+	assert_eq(GameSnapshotReader.monster_species_key({}), "")
+	assert_eq(GameSnapshotReader.monster_species_key(null), "")
+	assert_eq(GameSnapshotReader.monster_species_key("nope"), "")

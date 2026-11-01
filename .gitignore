@@ -10,7 +10,10 @@ Desktop.ini
 
 # misc
 plans/
+# dev/ is local tooling, but the curated fixtures are test data the suite depends on
+# (tests/test_fixture_replay.gd reads dev/fixtures/), so they must be tracked.
 dev/*
 !dev/dev_config.gd
+!dev/fixtures/
 _agent.md
 achievements.json

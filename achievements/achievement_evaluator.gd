@@ -1,18 +1,24 @@
 extends RefCounted
-## AchievementEvaluator - detects earned achievements from live run state.
+## AchievementEvaluator - detects earned achievements from game snapshots.
 ##
-## Poll-based: mod_main calls poll(run) on every poll and poll_battle(state, run) while
-## in the battle state. Both return an Array of newly earned achievement dictionaries
-## (empty most polls). The caller owns persistence (achievement_store) and display
-## (achievement_panel).
+## Rules only: this class never touches live game objects, files, or UI. It consumes
+## the plain Dictionaries produced by achievements/game_snapshot_reader.gd:
+##   poll(run_snapshot)            -> Array of newly earned achievement dictionaries
+##   poll_battle(battle_snapshot)  -> Array of newly earned achievement dictionaries
+## Both return an empty Array most polls. The caller owns persistence
+## (achievement_store) and display (achievement_panel).
+##
+## Snapshot contract (see game_snapshot_reader.gd): unknown values are ABSENT keys.
+## Defaults live here, in the rules: a monster without "level" counts as level 1, and
+## a run without "trainer_id" has no trainer.
 ##
 ## Achievements:
-## - "So I started blasting" (poll, run state)
+## - "So I started blasting" (poll, run snapshot)
 ##   Trainer: Gentleman
 ##   Trigger: a level-2 Rhizuka (the trainer's common level-2 strat) is owned no later
-##   than Day 5. Day is read from run.current_round (the field the mod already logs as
-##   "Day"). State-based: awards as soon as the condition is true.
-## - "Oh Yeah!" / "Herd U Liek Mudkipz" (poll, run state)
+##   than Day 5. Day is read from the snapshot's current_round (the field the mod
+##   already logs as "Day"). State-based: awards as soon as the condition is true.
+## - "Oh Yeah!" / "Herd U Liek Mudkipz" (poll, run snapshot)
 ##   Trainer: Twins
 ##   Trigger: a level-2 pre-evolution evolves into its level-3 form. Twins doubles the
 ##   leveled unit, so the evolution produces two level-3 units.
@@ -23,15 +29,16 @@ extends RefCounted
 ##   across several polls (see the runtime log: one Dewlotl appears, then the second on
 ##   the next poll), so the baseline stays armed for a short window instead of requiring
 ##   both copies in one poll. Arming avoids awarding on a plain purchase.
-## - "Big Dog, Best Dog" (poll_battle, battle state)
-##   Trigger: a Cinnabark unit generates more than 1,000,000 shield in one battle.
-##   Evaluated once the battle is over, so the toast lands on the results screen.
-##   Reads the visible battle simulation's unit records:
-##     battle_state.simulation.data.battle_units[]
-##       team_id == 0 (player side), slot_index (board slot), shield_granted
+## - "Big Dog, Best Dog" (poll_battle, battle snapshot)
+##   Trigger: a single Cinnabark unit generates more than 1,000,000 shield in one battle.
+##   Evaluated once the battle is over (the detector decides when), so the toast lands
+##   on the results screen. Reads the snapshot's battle_units records:
+##     battle_units[]: team_id == 0 (player side), slot_index (board slot), shield_granted
 ##   These fields are the ones the verified examples/MyBattleStats mod reads.
 ##   Species is resolved by mapping slot_index to the player run's team slot, because
 ##   battle unit records do not expose a species key.
+##   Semantics: PER UNIT, not per slot. Two sub-threshold records in the same slot do
+##   not add up. Twins duplicates that share a slot are therefore judged individually.
 
 const TWINS_TRAINER_ID := "twins"
 const BEETBUD_KEY := "monster.name.beetbud"
@@ -88,19 +95,12 @@ var _last_post_counts: Dictionary = {}
 # Gentleman Rhizuka achievement: awarded this run (suppresses repeat polling).
 var _rhizuka_awarded := false
 
-# Big Dog tracking: award at most once per battle state instance.
-var _battle_state_id := 0
-var _big_dog_awarded := false
-
-# Shared property probe (mod_main passes its _has_property Callable).
-var _has_prop: Callable
 # Injectable clock. Empty in production (falls back to Time.get_ticks_msec()).
 # Tests pass a controllable Callable so the evolution arm window is deterministic.
 var _now_fn: Callable
 
 
-func _init(has_property_fn: Callable, now_fn: Callable = Callable()) -> void:
-	_has_prop = has_property_fn
+func _init(now_fn: Callable = Callable()) -> void:
 	_now_fn = now_fn
 
 
@@ -111,24 +111,25 @@ func _now() -> int:
 	return Time.get_ticks_msec()
 
 
-## Poll the run for newly earned achievements. Returns an Array of achievement dicts.
-func poll(run) -> Array:
-	if run == null or not is_instance_valid(run):
+## Poll a run snapshot for newly earned achievements. Returns an Array of achievement
+## dictionaries (empty most polls).
+func poll(run_snapshot: Dictionary) -> Array:
+	if run_snapshot.is_empty():
 		_reset()
 		return []
 
-	var trainer_id := str(run.get("trainer_id")) if _has_prop.call(run, "trainer_id") else ""
+	var trainer_id := str(run_snapshot.get("trainer_id", ""))
 	var is_gentleman := trainer_id == GENTLEMAN_TRAINER_ID
 	var is_twins := trainer_id == TWINS_TRAINER_ID
 	if not is_gentleman and not is_twins:
 		_reset()
 		return []
 
-	var owned := _collect_owned_species(run)
+	var owned := _collect_owned_species(run_snapshot)
 
 	var earned: Array = []
 	if is_gentleman:
-		earned.append_array(_poll_gentleman(run, owned))
+		earned.append_array(_poll_gentleman(run_snapshot, owned))
 	else:
 		_rhizuka_awarded = false
 
@@ -169,11 +170,11 @@ func poll(run) -> Array:
 
 
 ## Gentleman: owns a level-2 Rhizuka on Day 5 or earlier.
-func _poll_gentleman(run, owned: Dictionary) -> Array:
+func _poll_gentleman(run_snapshot: Dictionary, owned: Dictionary) -> Array:
 	if _rhizuka_awarded:
 		return []
 
-	var day := int(run.get("current_round")) if _has_prop.call(run, "current_round") else -1
+	var day := int(run_snapshot.get("current_round", -1))
 	if day < 1 or day > GENTLEMAN_DAY_LIMIT:
 		return []
 
@@ -186,89 +187,62 @@ func _poll_gentleman(run, owned: Dictionary) -> Array:
 	return []
 
 
-## Poll the active battle state for battle-scoped achievements. Returns newly earned
-## achievement dicts. Called every poll while inside the battle state.
+## Poll a completed battle snapshot for battle-scoped achievements. Returns newly
+## earned achievement dictionaries.
 ##
-## Evaluated only once the battle has finished (simulation.data.battle_over) so the toast
-## appears on the results screen, matching the Achievement Notifications setting wording.
-func poll_battle(state, run) -> Array:
-	if state == null or not is_instance_valid(state):
-		reset_battle()
+## The caller (battle_completion_detector + mod_main) decides WHEN this runs: once per
+## completed battle, with a usable snapshot. This function is a pure rule check.
+func poll_battle(battle_snapshot: Dictionary) -> Array:
+	if battle_snapshot.is_empty():
+		return []
+	if not bool(battle_snapshot.get("battle_over", false)):
 		return []
 
-	var instance_id: int = state.get_instance_id()
-	if instance_id != _battle_state_id:
-		_battle_state_id = instance_id
-		_big_dog_awarded = false
-
-	if _big_dog_awarded:
-		return []
-	if run == null or not is_instance_valid(run):
-		return []
-
-	var sim = state.get("simulation") if _has_prop.call(state, "simulation") else null
-	if sim == null or not is_instance_valid(sim):
-		return []
-	var data = sim.get("data") if _has_prop.call(sim, "data") else null
-	if data == null or not _has_prop.call(data, "battle_over") or not bool(data.get("battle_over")):
-		return []
-
-	var max_shield := _max_cinnabark_shield(data, run)
-	if max_shield > BIG_DOG_SHIELD_THRESHOLD:
-		_big_dog_awarded = true
+	if _max_cinnabark_unit_shield(battle_snapshot) > BIG_DOG_SHIELD_THRESHOLD:
 		return [BIG_DOG.duplicate(true)]
 	return []
 
 
-## Highest single-slot shield total generated by a Cinnabark on the player's side.
+## Highest shield generated by a SINGLE player-side Cinnabark unit record.
 ## The fight is simulated up front, so these totals are final by the time it is over.
-func _max_cinnabark_shield(data, run) -> float:
-	if not _has_prop.call(data, "battle_units"):
-		return 0.0
-	var units = data.get("battle_units")
+func _max_cinnabark_unit_shield(battle_snapshot: Dictionary) -> float:
+	var units = battle_snapshot.get("battle_units")
 	if not units is Array:
 		return 0.0
 
-	var team = run.get("team") if _has_prop.call(run, "team") else null
+	var team = battle_snapshot.get("team")
 	if not team is Array:
 		return 0.0
 
-	# Sum shield per board slot (Twins duplicates can share a slot).
-	var shield_by_slot := {}
-	for unit in units:
-		if unit == null or not is_instance_valid(unit):
-			continue
-		if not _has_prop.call(unit, "team_id") or not _has_prop.call(unit, "slot_index") or not _has_prop.call(unit, "shield_granted"):
-			continue
-		var team_id = unit.get("team_id")
-		var slot_value = unit.get("slot_index")
-		var shield_value = unit.get("shield_granted")
-		if team_id == null or slot_value == null or shield_value == null:
-			continue
-		if int(team_id) != PLAYER_TEAM_ID:
-			continue
-		var slot := int(slot_value)
-		shield_by_slot[slot] = float(shield_by_slot.get(slot, 0.0)) + float(shield_value)
-
 	var best := 0.0
-	for slot in shield_by_slot.keys():
+	for unit in units:
+		if not unit is Dictionary:
+			continue
+		if not unit.has("team_id") or not unit.has("slot_index") or not unit.has("shield_granted"):
+			continue
+		var shield = unit.get("shield_granted")
+		if shield == null:
+			continue
+		if int(unit.get("team_id")) != PLAYER_TEAM_ID:
+			continue
+		var slot := int(unit.get("slot_index"))
 		if slot < 0 or slot >= team.size():
 			continue
 		if not _is_cinnabark(team[slot]):
 			continue
-		best = maxf(best, float(shield_by_slot[slot]))
+		best = maxf(best, float(shield))
 	return best
 
 
-## Does this live team monster belong to the Cinnabark species?
-func _is_cinnabark(monster) -> bool:
-	return _monster_species_key(monster) == CINNABARK_KEY
+## Does this snapshot team entry belong to the Cinnabark species?
+func _is_cinnabark(entry) -> bool:
+	return _monster_species_key(entry) == CINNABARK_KEY
 
 
-## Clear battle-scoped tracking. Call when leaving the battle phase.
-func reset_battle() -> void:
-	_battle_state_id = 0
-	_big_dog_awarded = false
+## Clear all run-scoped tracking. Call at a verified run transition so consecutive
+## runs with the same trainer cannot retain flags or baselines.
+func reset_run() -> void:
+	_reset()
 
 
 func _reset() -> void:
@@ -283,19 +257,17 @@ func _reset_evolution_state() -> void:
 
 
 ## One pass over team + bench: species key -> {"count": int, "levels": {level: count}}.
-func _collect_owned_species(run) -> Dictionary:
+func _collect_owned_species(run_snapshot: Dictionary) -> Dictionary:
 	var species := {}
 	for list_name in ["team", "bench"]:
-		if not _has_prop.call(run, list_name):
-			continue
-		var list = run.get(list_name)
+		var list = run_snapshot.get(list_name)
 		if not list is Array:
 			continue
 		for monster in list:
 			var key := _monster_species_key(monster)
 			if key.is_empty():
 				continue
-			var level := int(monster.get("level")) if _has_prop.call(monster, "level") else 1
+			var level := int(monster.get("level", 1)) if monster is Dictionary else 1
 			var record: Dictionary = species.get(key, {"count": 0, "levels": {}})
 			record["count"] = int(record["count"]) + 1
 			var levels: Dictionary = record["levels"]
@@ -304,13 +276,8 @@ func _collect_owned_species(run) -> Dictionary:
 	return species
 
 
-## Species name_key of a live monster, or "" when unavailable.
+## Species name_key of a snapshot monster entry, or "" when unavailable.
 func _monster_species_key(monster) -> String:
-	if monster == null or not is_instance_valid(monster):
+	if not monster is Dictionary:
 		return ""
-	if not _has_prop.call(monster, "data"):
-		return ""
-	var data = monster.get("data")
-	if data == null or not _has_prop.call(data, "name_key"):
-		return ""
-	return str(data.get("name_key"))
+	return str(monster.get("name_key", ""))

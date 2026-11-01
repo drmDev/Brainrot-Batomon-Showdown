@@ -1,0 +1,17 @@
+{
+	"name": "big_dog_best_dog",
+	"steps": [
+		{
+			"kind": "battle",
+			"trainer_id": "musician",
+			"current_round": 3,
+			"team": [{"name_key": "monster.name.cinnabark", "level": 3}],
+			"bench": [],
+			"battle_over": true,
+			"battle_units": [
+				{"team_id": 0, "slot_index": 0, "shield_granted": 1200000.0}
+			],
+			"expect": ["big_dog_best_dog"]
+		}
+	]
+}
