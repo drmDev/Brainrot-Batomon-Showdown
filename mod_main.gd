@@ -15,7 +15,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.7"
+const VERSION := "0.0.0.15"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 
@@ -226,15 +226,34 @@ func _inspect_current_phase() -> void:
 
 	var battle_snapshot: Dictionary = {}
 	if is_battle:
-		# Battle-scoped achievements are evaluated once the battle is over. The
-		# detector owns that timing; the completion is consumed only after a usable
-		# snapshot exists, so a partial read is retried next poll.
+		# A new battle starts fresh battle-scoped reaction tracking.
+		if _last_phase != "battle":
+			if _reaction_evaluator != null:
+				_reaction_evaluator.reset_battle()
+			_log_battle_probe(state)
+
+		# Battle-scoped achievements and reactions are evaluated once the battle is
+		# over, against the final unit totals. The detector owns that timing; the
+		# completion is consumed only after a usable snapshot exists, so a partial
+		# read is retried next poll.
 		if _battle_completion != null and _battle_completion.is_pending(state):
-			battle_snapshot = _snapshot_reader.read_battle(state, run)
-			if _snapshot_reader.is_battle_snapshot_usable(battle_snapshot):
+			# During battle the player's run is the replay copy the game hands the
+			# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
+			# RunManager.data may already be the promoted/completed run.
+			var player_run = _get_battle_player_run(state, run)
+			battle_snapshot = _snapshot_reader.read_battle(state, player_run)
+			var usable: bool = _snapshot_reader.is_battle_snapshot_usable(battle_snapshot)
+			_log_event("BATTLE COMPLETE | usable=%s units=%s team=%s trainer=%s" % [
+				str(usable),
+				str(battle_snapshot.get("battle_units").size()) if battle_snapshot.get("battle_units") is Array else "absent",
+				str(battle_snapshot.get("team").size()) if battle_snapshot.get("team") is Array else "absent",
+				str(battle_snapshot.get("trainer_id", "absent")),
+			])
+			if usable:
 				_battle_completion.consume()
-				_log_battle_attribution(battle_snapshot)
+				_log_battle_units(battle_snapshot)
 				_poll_battle_achievements(battle_snapshot)
+				_poll_battle_reactions(battle_snapshot)
 	elif _last_phase == "battle":
 		# Reset battle-scoped tracking only when actually leaving the battle phase.
 		if _battle_completion != null:
@@ -265,6 +284,41 @@ func _poll_reactions(run_snapshot: Dictionary) -> void:
 	_reaction_player.play_all(_reaction_evaluator.poll(run_snapshot))
 
 
+## Poll a completed battle snapshot for battle-scoped reactions (final unit totals).
+func _poll_battle_reactions(battle_snapshot: Dictionary) -> void:
+	if _reaction_evaluator == null or _reaction_player == null:
+		return
+	var triggered: Array = _reaction_evaluator.poll_battle(battle_snapshot)
+	_log_event("REACTION BATTLE | %d triggered" % triggered.size())
+	_reaction_player.play_all(triggered)
+
+
+## The player's run during battle: the replay copy when the battle state exposes it,
+## otherwise RunManager.data.
+func _get_battle_player_run(state, run):
+	if _has_property(state, "_replay_p1_data"):
+		var replay = state.get("_replay_p1_data")
+		if is_instance_valid(replay):
+			return replay
+	return run
+
+
+## Debug aid: one line per battle describing what the battle state exposes.
+func _log_battle_probe(state) -> void:
+	var sim = state.get("simulation") if _has_property(state, "simulation") else null
+	var data = sim.get("data") if sim != null and _has_property(sim, "data") else null
+	var units = data.get("battle_units") if data != null and _has_property(data, "battle_units") else null
+	var over = data.get("battle_over") if data != null and _has_property(data, "battle_over") else null
+	var replay = state.get("_replay_p1_data") if _has_property(state, "_replay_p1_data") else null
+	_log_event("BATTLE PHASE | sim=%s data=%s over=%s units=%s replay_run=%s" % [
+		str(sim != null),
+		str(data != null),
+		str(over),
+		str(units.size()) if units is Array else "absent",
+		str(replay != null),
+	])
+
+
 ## Persist newly earned achievements (deduplicated by the store). The panel is
 ## optional: unlocks are saved even when it is absent or notifications are disabled.
 func _award_achievements(earned: Array) -> void:
@@ -290,10 +344,16 @@ func _award_achievements(earned: Array) -> void:
 ##
 ## No verified run-start/run-end signal exists (Creature Comforts only compares
 ## trainer_id between snapshots), so transitions are inferred from:
-##   - a different run object instance,
+##   - a different run_id (the game's own run identity),
+##   - a different run object instance (only when run_id is unavailable),
 ##   - a different trainer_id,
 ##   - current_round going backwards.
 ## Each trigger is logged so the first real session can confirm which one fires.
+##
+## run_id is the primary identity because the game promotes RunManager.data to a NEW
+## RunData object when a battle starts (verified in BatomonHelperBridge: it compares
+## completed.run_id to the replay run's run_id). Comparing object instances alone
+## produced a false "new run object" reset at every battle start.
 ##
 ## An unavailable run (menu, transition) does NOT clear tracking: the comparison on
 ## return is what detects a new run. Clearing here would hide a new run whose only
@@ -302,12 +362,14 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 	if run_snapshot.is_empty():
 		return
 
+	var run_id := str(run_snapshot.get("run_id", ""))
 	var instance_id: int = run.get_instance_id() if is_instance_valid(run) else 0
 	var trainer_id := str(run_snapshot.get("trainer_id", ""))
 	var current_round := int(run_snapshot.get("current_round", 0))
 
 	if _run_tracking.is_empty():
 		_run_tracking = {
+			"run_id": run_id,
 			"run_instance_id": instance_id,
 			"trainer_id": trainer_id,
 			"current_round": current_round,
@@ -315,19 +377,26 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 		return
 
 	var reason := ""
-	if instance_id != int(_run_tracking.get("run_instance_id", 0)):
+	var tracked_run_id := str(_run_tracking.get("run_id", ""))
+	if not run_id.is_empty() and not tracked_run_id.is_empty():
+		if run_id != tracked_run_id:
+			reason = "run id changed"
+	elif instance_id != int(_run_tracking.get("run_instance_id", 0)):
 		reason = "new run object"
-	elif trainer_id != str(_run_tracking.get("trainer_id", "")):
+	if reason.is_empty() and trainer_id != str(_run_tracking.get("trainer_id", "")):
 		reason = "trainer changed"
-	elif current_round < int(_run_tracking.get("current_round", 0)):
+	if reason.is_empty() and current_round < int(_run_tracking.get("current_round", 0)):
 		reason = "day went backwards"
 
 	if reason.is_empty():
+		_run_tracking["run_id"] = run_id
+		_run_tracking["run_instance_id"] = instance_id
 		_run_tracking["current_round"] = current_round
 		return
 
 	_print_notice("Brain Rot: run reset (%s)" % reason)
 	_run_tracking = {
+		"run_id": run_id,
 		"run_instance_id": instance_id,
 		"trainer_id": trainer_id,
 		"current_round": current_round,
@@ -362,28 +431,35 @@ func _log_run_progress(run_snapshot: Dictionary) -> void:
 	])
 
 
-## Debug aid: log per-slot unit counts and the species resolved from the team slot.
-## Verifies the slot_index -> team mapping at runtime (see dev/QUALITY.md).
-func _log_battle_attribution(battle_snapshot: Dictionary) -> void:
-	if _state_capture == null or not _state_capture.is_enabled():
-		return
+## Debug aid: one line per player-side unit with the final metrics the reaction reads.
+func _log_battle_units(battle_snapshot: Dictionary) -> void:
 	var units = battle_snapshot.get("battle_units")
-	var team = battle_snapshot.get("team")
-	if not units is Array or not team is Array:
+	if not units is Array:
 		return
-	var counts := {}
+	var team = battle_snapshot.get("team")
+	if not team is Array:
+		team = []
 	for unit in units:
-		if not unit is Dictionary or not unit.has("slot_index"):
+		if not unit is Dictionary:
 			continue
-		var slot := int(unit.get("slot_index"))
-		counts[slot] = int(counts.get(slot, 0)) + 1
-	var parts: Array = []
-	for slot in counts.keys():
-		var species := ""
-		if slot >= 0 and slot < team.size():
-			species = str(team[slot].get("name_key", "")) if team[slot] is Dictionary else ""
-		parts.append("slot %d x%d -> %s" % [slot, int(counts[slot]), species if not species.is_empty() else "?"])
-	_log_event("BATTLE ATTRIBUTION | %s" % ", ".join(parts))
+		if int(unit.get("team_id", -1)) != 0:
+			continue
+		var slot := int(unit.get("slot_index", -1))
+		var species := "?"
+		if slot >= 0 and slot < team.size() and team[slot] is Dictionary:
+			var key := str(team[slot].get("name_key", ""))
+			if not key.is_empty():
+				species = key
+		_log_event("BATTLE UNIT | slot %d %s dmg=%s heal=%s shield=%s burn=%s poison=%s shock=%s" % [
+			slot,
+			species,
+			str(unit.get("damage_dealt", "?")),
+			str(unit.get("healing_done", "?")),
+			str(unit.get("shield_granted", "?")),
+			str(unit.get("burn_inflicted", "?")),
+			str(unit.get("poison_inflicted", "?")),
+			str(unit.get("shock_inflicted", "?")),
+		])
 
 
 ## Write the snapshot to the debug dump directory when capture is enabled.
@@ -429,12 +505,15 @@ func _time_short() -> String:
 # Utility functions
 
 func _has_property(obj, property: String) -> bool:
+	if obj == null:
+		return false
+	# `in` is O(1) and works for both Objects (properties) and Dictionaries (keys),
+	# unlike get_property_list(), which allocates and rejects Dictionaries.
+	if obj is Dictionary:
+		return obj.has(property)
 	if not is_instance_valid(obj):
 		return false
-	for prop in obj.get_property_list():
-		if str(prop.name) == property:
-			return true
-	return false
+	return property in obj
 
 
 func _script_is(obj, script_path: String) -> bool:

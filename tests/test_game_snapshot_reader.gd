@@ -87,6 +87,18 @@ func test_read_run_non_array_team_becomes_empty_array() -> void:
 	assert_empty(snapshot.get("team"))
 
 
+# --- read_run: run identity ---
+
+func test_read_run_captures_run_id() -> void:
+	var run = TestHelpers.FakeObject.new({"run_id": 12345, "trainer_id": "musician"})
+	assert_eq(_new_reader().read_run(run).get("run_id"), "12345")
+
+
+func test_read_run_missing_run_id_stays_absent() -> void:
+	var run = TestHelpers.FakeObject.new({"trainer_id": "musician"})
+	assert_false(_new_reader().read_run(run).has("run_id"))
+
+
 # --- read_run: numeric progress fields ---
 
 func test_read_run_captures_lives_and_wins() -> void:
@@ -167,6 +179,70 @@ func test_read_battle_unit_fields() -> void:
 	assert_eq(unit.get("shield_granted"), 1200000.0)
 
 
+func test_read_battle_unit_accumulated_metrics() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var unit = TestHelpers.battle_unit_metrics(0, 2, {
+		"damage_dealt": 67.0,
+		"healing_done": 12.0,
+		"shield_granted": 5.0,
+	})
+	var state = TestHelpers.battle_state([unit])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_eq(entry.get("damage_dealt"), 67.0)
+	assert_eq(entry.get("healing_done"), 12.0)
+	assert_eq(entry.get("shield_granted"), 5.0)
+
+
+func test_read_battle_unit_status_counters() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var unit = TestHelpers.battle_unit_metrics(0, 0, {
+		"burn_inflicted": 67,
+		"poison_inflicted": 3,
+		"shock_inflicted": 0,
+	})
+	var state = TestHelpers.battle_state([unit])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_eq(entry.get("burn_inflicted"), 67)
+	assert_eq(entry.get("poison_inflicted"), 3)
+	assert_eq(entry.get("shock_inflicted"), 0)
+
+
+func test_read_battle_unit_missing_metrics_stay_absent() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_false(entry.has("damage_dealt"))
+	assert_false(entry.has("healing_done"))
+	assert_false(entry.has("burn_inflicted"))
+	assert_false(entry.has("poison_inflicted"))
+	assert_false(entry.has("shock_inflicted"))
+
+
+func test_read_battle_unit_null_metrics_stay_absent() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var unit = TestHelpers.FakeObject.new({
+		"team_id": 0,
+		"slot_index": 0,
+		"shield_granted": null,
+		"damage_dealt": null,
+		"healing_done": "nope",
+	})
+	var state = TestHelpers.battle_state([unit])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_false(entry.has("shield_granted"))
+	assert_false(entry.has("damage_dealt"))
+	assert_false(entry.has("healing_done"))
+
+
+func test_read_battle_unit_status_counters_absent_when_missing() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_false(entry.has("burn_inflicted"))
+	assert_false(entry.has("poison_inflicted"))
+	assert_false(entry.has("shock_inflicted"))
+
+
 func test_read_battle_missing_simulation_keeps_run_fields() -> void:
 	var run = TestHelpers.run("musician", 3, [])
 	var snapshot: Dictionary = _new_reader().read_battle(TestHelpers.FakeObject.new({}), run)
@@ -241,13 +317,3 @@ func test_usable_false_without_battle_units() -> void:
 	assert_false(reader.is_battle_snapshot_usable(snapshot))
 
 
-# --- monster_species_key ---
-
-func test_monster_species_key_reads_name_key() -> void:
-	assert_eq(GameSnapshotReader.monster_species_key({"name_key": RHIZUKA}), RHIZUKA)
-
-
-func test_monster_species_key_empty_for_missing_or_invalid() -> void:
-	assert_eq(GameSnapshotReader.monster_species_key({}), "")
-	assert_eq(GameSnapshotReader.monster_species_key(null), "")
-	assert_eq(GameSnapshotReader.monster_species_key("nope"), "")

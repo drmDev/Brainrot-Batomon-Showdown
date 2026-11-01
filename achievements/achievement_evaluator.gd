@@ -228,15 +228,10 @@ func _max_cinnabark_unit_shield(battle_snapshot: Dictionary) -> float:
 		var slot := int(unit.get("slot_index"))
 		if slot < 0 or slot >= team.size():
 			continue
-		if not _is_cinnabark(team[slot]):
+		if _monster_species_key(team[slot]) != CINNABARK_KEY:
 			continue
 		best = maxf(best, float(shield))
 	return best
-
-
-## Does this snapshot team entry belong to the Cinnabark species?
-func _is_cinnabark(entry) -> bool:
-	return _monster_species_key(entry) == CINNABARK_KEY
 
 
 ## Clear all run-scoped tracking. Call at a verified run transition so consecutive

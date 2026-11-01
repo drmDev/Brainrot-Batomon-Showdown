@@ -20,9 +20,6 @@ class FakeObject:
 	func _has(property: StringName) -> bool:
 		return _props.has(property)
 
-	func set_prop(property: String, value) -> void:
-		_props[property] = value
-
 
 ## Controllable clock for deterministic time-based tests. Pass `clock.now` as the
 ## evaluator's second `_init` argument, then call advance() to move time forward.
@@ -46,12 +43,6 @@ static func probe(obj, property: String) -> bool:
 	if obj == null:
 		return false
 	return property in obj
-
-
-## Build a mature monster fake: species key plus nullable extras used by fixtures.
-## Kept separate from monster() so existing call sites stay unchanged.
-static func monster_full(props: Dictionary):
-	return FakeObject.new(props)
 
 
 ## Build a monster fake for the achievement evaluator: needs `data.name_key` and `level`.
@@ -100,6 +91,14 @@ static func monster_snapshot(name_key: String, level: int = 1) -> Dictionary:
 ## Build a battle unit snapshot entry.
 static func battle_unit_snapshot(team_id: int, slot_index: int, shield_granted: float) -> Dictionary:
 	return {"team_id": team_id, "slot_index": slot_index, "shield_granted": shield_granted}
+
+
+## Build a battle unit fake with accumulated metrics (any subset of damage_dealt,
+## healing_done, shield_granted, burn_inflicted, poison_inflicted, shock_inflicted).
+static func battle_unit_metrics(team_id: int, slot_index: int, props: Dictionary = {}):
+	var base := {"team_id": team_id, "slot_index": slot_index}
+	base.merge(props, true)
+	return FakeObject.new(base)
 
 
 ## Build a battle snapshot dictionary (the evaluator's poll_battle input shape).

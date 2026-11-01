@@ -147,6 +147,180 @@ func test_reset_run_permits_another_trigger() -> void:
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 
 
+# --- battle-scoped: any player unit metric exactly 67 ---
+
+const CINNABARK := "monster.name.cinnabark"
+
+
+func _battle(team: Array, units: Array, battle_over: bool = true) -> Dictionary:
+	return {
+		"kind": "battle",
+		"team": team,
+		"battle_units": units,
+		"battle_over": battle_over,
+	}
+
+
+func _unit(slot: int, metrics: Dictionary, team_id: int = 0) -> Dictionary:
+	var unit := {"team_id": team_id, "slot_index": slot}
+	unit.merge(metrics, true)
+	return unit
+
+
+func test_battle_damage_67_triggers_with_unit_and_metric() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var earned: Array = evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0})]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
+		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
+
+
+func test_battle_each_metric_67_triggers() -> void:
+	for metric in ["damage_dealt", "healing_done", "shield_granted", "burn_inflicted", "poison_inflicted", "shock_inflicted"]:
+		var evaluator = _new_evaluator()
+		var team := [{"name_key": CINNABARK, "level": 3}]
+		var earned: Array = evaluator.poll_battle(_battle(team, [_unit(0, {metric: 67})]))
+		assert_eq(earned.size(), 1, "metric %s should trigger" % metric)
+
+
+func test_battle_metric_66_and_68_do_not_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 66.0})])))
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 68.0})])))
+
+
+func test_battle_enemy_side_ignored() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0}, 1)])))
+
+
+func test_battle_repeated_polls_do_not_retrigger() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	assert_empty(evaluator.poll_battle(snapshot))
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_battle_multiple_units_fire_once_for_lowest_slot() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": "monster.name.rhizuka", "level": 3},
+	]
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(0, {"damage_dealt": 67.0}),
+		_unit(1, {"healing_done": 67.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
+
+
+func test_battle_lowest_slot_wins_regardless_of_unit_order() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": "monster.name.rhizuka", "level": 3},
+	]
+	# Slot 3 is listed first but slot 1 is lower, so slot 1 wins.
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(3, {"damage_dealt": 67.0}),
+		_unit(1, {"healing_done": 67.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), "slot 1 monster.name.rhizuka heal 67")
+
+
+func test_battle_same_unit_multiple_metrics_fire_once_for_first_metric() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(0, {"damage_dealt": 67.0, "shield_granted": 67.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
+
+
+func test_battle_fires_once_even_with_many_matches() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": "monster.name.rhizuka", "level": 3},
+		{"name_key": "monster.name.onsetra", "level": 3},
+	]
+	var snapshot := _battle(team, [
+		_unit(0, {"damage_dealt": 67.0, "healing_done": 67.0}),
+		_unit(1, {"shield_granted": 67.0, "burn_inflicted": 67}),
+		_unit(2, {"poison_inflicted": 67, "shock_inflicted": 67}),
+	])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_battle_reset_battle_permits_another_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_battle()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_battle_reset_run_clears_battle_tracking() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_battle_missing_or_invalid_metrics_ignored() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {})])))
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": null})])))
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": "67"})])))
+	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": true})])))
+
+
+func test_battle_empty_snapshot_does_not_trigger() -> void:
+	assert_empty(_new_evaluator().poll_battle({}))
+
+
+func test_battle_mid_fight_snapshot_does_not_trigger() -> void:
+	# Only the final battle totals count; an in-progress battle never matches.
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})], false)
+	assert_empty(evaluator.poll_battle(snapshot))
+	# The same totals at battle_over do trigger.
+	assert_eq(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0})])).size(), 1)
+
+
+func test_battle_missing_battle_over_does_not_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var team := [{"name_key": CINNABARK, "level": 3}]
+	var snapshot := {"kind": "battle", "team": team, "battle_units": [_unit(0, {"damage_dealt": 67.0})]}
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_battle_unknown_species_logs_question_mark() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle([], [_unit(3, {"damage_dealt": 67.0})]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), "slot 3 ? damage 67")
+
+
 # --- 9. achievement completion state does not suppress reactions ---
 
 func test_achievement_completion_does_not_suppress_reaction() -> void:

@@ -49,7 +49,8 @@ user://brain_rot/inspect.log
 On Windows that is `%APPDATA%\Godot\app_userdata\Batomon Showdown\brain_rot\inspect.log`.
 
 - `_print_notice(message)` - console **and** file, no prefix. Used for user-visible events (`loaded`, `EARNED`, `REACTION`, `run reset`).
-- `_log_event(message)` - file only, `[HH:MM:SS] ` prefix. Used for diagnostics (`RUN PROGRESS`, `BATTLE ATTRIBUTION`).
+- `_log_event(message)` - file only, `[HH:MM:SS] ` prefix. Used for diagnostics (`RUN PROGRESS`, `BATTLE PHASE`, `BATTLE COMPLETE`, `BATTLE UNIT`, `REACTION BATTLE`).
+- Battle diagnostics: `BATTLE PHASE` (once per battle: sim/data/battle_over/unit count/replay run present), `BATTLE COMPLETE` (snapshot usability and field counts), `BATTLE UNIT` (one line per player unit with dmg/heal/shield/burn/poison/shock), `REACTION BATTLE` (how many battle reactions fired).
 - `_log_message(message)` - raw file line (startup banner).
 - The file is created if missing and appended to; it is never truncated by the mod. Delete it before launching for a clean session.
 - If the file cannot be opened, logging no-ops and the mod still runs.
@@ -64,8 +65,12 @@ Get-Content $log -Wait -Tail 50
 ## Reactions
 Reactions are snapshot-driven conditions that log to the console. They are independent of achievements: no store, no panel, no completion flags.
 
-- **six_seven** - remaining Lives == 6 AND committed cumulative Wins == 7 (`run.lives`, `run.current_wins` from `RunManager.data`, read from one snapshot). A run starts with 10 lives, so this is 4 lives lost and 7 wins. Logs `Brain Rot: REACTION | six_seven | Lives 6, Wins 7`.
-- Triggers once per run, on the first matching snapshot. Repeated polls, leaving and returning, and a menu round-trip (run unavailable) do not retrigger. Only a verified run transition calls `reset_run()`.
+- **six_seven** has two independent triggers, both logged under the same id:
+  - **Run condition:** remaining Lives == 6 AND committed cumulative Wins == 7 (`run.lives`, `run.current_wins` from `RunManager.data`, read from one snapshot). A run starts with 10 lives, so this is 4 lives lost and 7 wins. Logs `Brain Rot: REACTION | six_seven | Lives 6, Wins 7`.
+  - **Battle condition:** any player-side unit's **final** battle total is exactly 67 on damage, heal, shield, burn, poison, or shock. Evaluated only at `battle_over`, never mid-fight. Logs `Brain Rot: REACTION | six_seven | slot <n> <species> <metric> 67`, e.g. `slot 2 monster.name.cinnabark damage 67`. All six are accumulated per-battle counters on the unit record: `damage_dealt`, `healing_done`, `shield_granted`, `burn_inflicted`, `poison_inflicted`, `shock_inflicted`. Do **not** use `get_stat(4/5/6)` for burn/poison/shock — that is the unit's stat, not the damage it dealt (verified against a live battle: `get_stat` gave 11/15/20 where the real totals were 132/60/80).
+  - During battle the player's run is read from `battle_state._replay_p1_data` (verified in MyBattleStats/BatoEyes and BatomonHelperBridge), falling back to `RunManager.data`, which may already be the promoted/completed run.
+- Run condition triggers once per run, on the first matching snapshot. Repeated polls, leaving and returning, and a menu round-trip (run unavailable) do not retrigger. Only a verified run transition calls `reset_run()`.
+- Battle condition fires at most **once per battle**, even when several units qualify: the lowest slot wins, and within that slot the first metric in `BATTLE_METRICS` order (damage, heal, shield, burn, poison, shock). `reset_battle()` runs when a new battle starts. It is checked once, on the completed battle's final totals, so mid-fight values never match.
 - **Limitation:** occurrence tracking is session-only. Restarting the game or the mod can allow a reaction again within a continuing run.
 - **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `Brain Rot: run progress | Day N, Lives L, Wins W` on every change to verify them.
 - `reaction_player.gd` is the future audio/visual integration point; today it only logs (console and `inspect.log`).
@@ -80,17 +85,15 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
 | `achievements/achievement_store.gd` | JSON persistence for completion at the mod root (`achievements.json`); tolerates missing or corrupt files. |
 | `achievements/achievement_panel.gd` | Bottom-right achievement toast; auto-hides after ~4 seconds. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
-| `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` returns newly triggered reactions; `reset_run()` clears per-run occurrence tracking. No store, UI, or live objects. |
+| `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction; today logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`. Future audio/visual integration point. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
 | `hud/comfort_panel.gd` | Shared dark-navy/gold panel base (palette, font, resize plumbing) used by mod HUD panels, including the toast. |
 | `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
-| `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites); exits with the runner's exit code. |
-| `dev/run_tests_isolated.ps1` | Runs each test method in its own Godot process so a crash fails only that test. |
-| `dev/mutate_tests.ps1` | Mutation harness: injects defects into the evaluator and verifies the suite catches them. |
+| `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
 | `dev/fixtures/` | Curated/captured run and battle snapshots replayed by `test_fixture_replay.gd`. |
-| `dev/QUALITY.md` | Test strategy, branch matrix, mutation score, and framework evaluation. |
+| `dev/QUALITY.md` | Test strategy, branch matrix, and framework evaluation. |
 
 ### Locating the gitignored dev files
 `.gitignore` has `dev/*`, so the `dev/` scripts and `dev/QUALITY.md` are **gitignored but
@@ -98,7 +101,7 @@ present on disk**. Tools that respect `.gitignore` (including some directory lis
 will not show them, which makes them look missing. They are not missing — read or run
 them by path:
 
-- Read them directly, e.g. `dev/QUALITY.md`, `dev/mutate_tests.ps1`.
+- Read them directly, e.g. `dev/QUALITY.md`, `dev/run_tests.ps1`.
 - List them with a shell that ignores `.gitignore`:
   `cmd /c dir /a "dev"` or `powershell -NoProfile -Command "Get-ChildItem dev -Force"`.
 - Run them from the mod root as documented in **Verification** below.
@@ -114,7 +117,7 @@ them by path:
 - Snapshots use absent keys for unknown values; defaults belong to the rules, not the reader.
 - Battle evaluation timing belongs to `battle_completion_detector.gd`; the evaluator's `poll_battle` is a pure rule check.
 - Persistence must not depend on the panel existing or notifications being enabled.
-- Call `reset_run()` at verified run transitions (inferred in `mod_main` from run identity, trainer, and day regression). An unavailable run does not clear tracking; the comparison on return detects a new run.
+- Call `reset_run()` at verified run transitions (inferred in `mod_main` from `run_id`, then run object instance, trainer, and day regression). `run_id` is the primary identity: the game promotes `RunManager.data` to a new RunData object when a battle starts, so instance comparison alone fires a false reset at every battle. An unavailable run does not clear tracking; the comparison on return detects a new run.
 - Reactions must not read the achievement store or depend on achievement completion.
 - The toast is gated by the Achievement Notifications setting.
 - Retain the 500 ms polling interval unless measurements justify changing it.
@@ -139,13 +142,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\run_tests.ps1
 
 - Use these scripts — do not hand-roll `godot --headless ...` commands. They are the
   canonical checks and behave identically for every contributor.
-- Both accept `-Root <path>` (defaults to the current directory) and `-Godot <exe>`
+- Both accept `-Root <path>` (defaults to the mod root) and `-Godot <exe>`
   (defaults to the path above). Pass `-Godot` only if the binary moves.
 - Do not report a change as complete unless both scripts exit `0`. Quote the suite and
   assertion counts from `run_tests.ps1` output, and say plainly that gameplay
   verification is still pending when it is.
-- If evaluator rules changed, also run `dev\run_tests_isolated.ps1` and
-  `dev\mutate_tests.ps1`; add tests for any surviving mutation.
+- To re-run one test method, use the runner's filter instead of a separate script:
+  `"C:\Code\Godot\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script tests\run_tests.gd -- --test=<exact_name>`
 - Expected noise: `run_tests.ps1` prints a `Parse JSON failed` error and a
   `Brain Rot: invalid achievements JSON` warning — that is the corrupt-file test
   exercising [`achievements/achievement_store.gd`](achievements/achievement_store.gd).

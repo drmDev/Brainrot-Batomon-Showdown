@@ -8,6 +8,7 @@ extends RefCounted
 ##   run snapshot:
 ##     {
 ##       "kind": "run",
+##       "run_id": String,                # only when the run exposes it
 ##       "trainer_id": String,            # only when the run exposes it
 ##       "current_round": int,            # only when the run exposes a number
 ##       "lives": int,                    # only when the run exposes a number
@@ -25,7 +26,12 @@ extends RefCounted
 ## monster: {"name_key": String, "level": int} with each key present only when the
 ## live monster exposes it. A null/invalid monster becomes {} so list positions are
 ## preserved (Big Dog resolves species by slot index).
-## unit: {"team_id": int, "slot_index": int, "shield_granted": float}, same rule.
+## unit: {"team_id": int, "slot_index": int, "shield_granted": float,
+##        "damage_dealt": float, "healing_done": float,
+##        "burn_inflicted": int, "poison_inflicted": int, "shock_inflicted": int},
+##   same rule. All are accumulated per-battle counters (verified against the game's
+##   own battle numbers: burn_inflicted/poison_inflicted match the displayed totals,
+##   while get_stat(4/5/6) is only the unit's stat and must not be used).
 ##
 ## Unknown values are represented by an ABSENT key, never a default. Defaults belong
 ## to the rules (the evaluator), not to the reader. Numeric fields are emitted only
@@ -33,10 +39,14 @@ extends RefCounted
 ## (and never raises, unlike a bare int(null)).
 ##
 ## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
-##   run: trainer_id, current_round, lives, current_wins, team, bench
+##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench
 ##   monster: data.name_key, level
 ##   battle: simulation.data.battle_over,
-##           simulation.data.battle_units[].{team_id, slot_index, shield_granted}
+##           simulation.data.battle_units[].{team_id, slot_index, shield_granted,
+##             damage_dealt, healing_done, burn_inflicted, poison_inflicted,
+##             shock_inflicted}
+##   (Verified in examples/MyBattleStats, the BatomonHelperBridge mod, and a live
+##   field probe of a real battle.)
 
 const KIND_RUN := "run"
 const KIND_BATTLE := "battle"
@@ -92,17 +102,12 @@ func is_battle_snapshot_usable(snapshot: Dictionary) -> bool:
 	return true
 
 
-## Species name_key of a snapshot monster entry, or "" when unavailable.
-static func monster_species_key(entry) -> String:
-	if not entry is Dictionary:
-		return ""
-	return str(entry.get("name_key", ""))
-
-
 func _read_run_fields(run, kind: String) -> Dictionary:
 	var snapshot := {"kind": kind}
 	if not _is_live(run):
 		return snapshot
+	if _has_prop.call(run, "run_id"):
+		snapshot["run_id"] = str(run.get("run_id"))
 	if _has_prop.call(run, "trainer_id"):
 		snapshot["trainer_id"] = str(run.get("trainer_id"))
 	for number_name in ["current_round", "lives", "current_wins"]:
@@ -144,8 +149,14 @@ func _read_battle_units(units) -> Array:
 			entry["team_id"] = int(unit.get("team_id"))
 		if _has_prop.call(unit, "slot_index"):
 			entry["slot_index"] = int(unit.get("slot_index"))
-		if _has_prop.call(unit, "shield_granted"):
-			entry["shield_granted"] = float(unit.get("shield_granted"))
+		for float_name in ["shield_granted", "damage_dealt", "healing_done"]:
+			var value = _read_float(unit, float_name)
+			if value != null:
+				entry[float_name] = value
+		for int_name in ["burn_inflicted", "poison_inflicted", "shock_inflicted"]:
+			var int_value = _read_int(unit, int_name)
+			if int_value != null:
+				entry[int_name] = int_value
 		out.append(entry)
 	return out
 
@@ -160,6 +171,16 @@ func _read_int(obj, property: String):
 		return int(value)
 	if typeof(value) == TYPE_FLOAT:
 		return int(value)
+	return null
+
+
+## Float value of a live object's property, or null when missing/null/non-numeric.
+func _read_float(obj, property: String):
+	if not _has_prop.call(obj, property):
+		return null
+	var value = obj.get(property)
+	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+		return float(value)
 	return null
 
 
