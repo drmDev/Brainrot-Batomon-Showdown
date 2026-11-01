@@ -87,6 +87,58 @@ func test_read_run_non_array_team_becomes_empty_array() -> void:
 	assert_empty(snapshot.get("team"))
 
 
+# --- read_run: numeric progress fields ---
+
+func test_read_run_captures_lives_and_wins() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"trainer_id": "musician",
+		"current_round": 4,
+		"lives": 6,
+		"current_wins": 7,
+	})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_eq(snapshot.get("lives"), 6)
+	assert_eq(snapshot.get("current_wins"), 7)
+
+
+func test_read_run_missing_lives_and_wins_stay_absent() -> void:
+	var run = TestHelpers.FakeObject.new({"trainer_id": "musician", "current_round": 4})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_false(snapshot.has("lives"))
+	assert_false(snapshot.has("current_wins"))
+
+
+func test_read_run_null_numeric_values_stay_absent() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"current_round": null,
+		"lives": null,
+		"current_wins": null,
+	})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_false(snapshot.has("current_round"), "null current_round must not raise or match")
+	assert_false(snapshot.has("lives"))
+	assert_false(snapshot.has("current_wins"))
+
+
+func test_read_run_non_numeric_values_stay_absent() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"current_round": "4",
+		"lives": "6",
+		"current_wins": true,
+	})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_false(snapshot.has("current_round"))
+	assert_false(snapshot.has("lives"))
+	assert_false(snapshot.has("current_wins"))
+
+
+func test_read_run_float_numeric_values_are_truncated() -> void:
+	var run = TestHelpers.FakeObject.new({"lives": 6.0, "current_wins": 7.0})
+	var snapshot: Dictionary = _new_reader().read_run(run)
+	assert_eq(snapshot.get("lives"), 6)
+	assert_eq(snapshot.get("current_wins"), 7)
+
+
 # --- read_battle ---
 
 func test_read_battle_null_state_returns_empty() -> void:

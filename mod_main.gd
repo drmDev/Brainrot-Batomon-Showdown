@@ -10,10 +10,18 @@ extends Node
 ## Responsibilities kept here: initialization, settings, polling, and coordination.
 ## Snapshot reading, rules, persistence, UI, battle-completion detection, and debug
 ## capture live in their own files.
+##
+## Logging mirrors Creature Comforts: one append handle kept open for the session,
+## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
+## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.5"
+const VERSION := "0.0.0.7"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
+
+# Log file (same layout as Creature Comforts, different path)
+const OUTPUT_DIR := "user://brain_rot"
+const LOG_FILE := "inspect.log"
 
 # Polling interval (matches the game's shop/battle state cadence)
 const POLL_INTERVAL_MS := 500
@@ -34,10 +42,19 @@ var _achievement_layer: CanvasLayer = null
 var _snapshot_reader = null
 var _state_capture = null
 
+# Reactions: snapshot-driven conditions that log to the console (future audio/visual).
+var _reaction_evaluator = null
+var _reaction_player = null
+var _last_progress_signature := ""
+
 var _next_poll := 0
 var _last_phase := ""
 var _initialization_started := false
 var _initialized := false
+
+# Session log handle (null when the log file could not be opened; logging no-ops).
+var _log_path := ""
+var _log_file: FileAccess = null
 
 # Run-transition tracking (inferred from data we already read; no game signals).
 # Keys: run_instance_id, trainer_id, current_round. Empty until the first run.
@@ -84,9 +101,12 @@ func _initialize_mod() -> void:
 
 	_load_settings()
 	_setup_achievement_system()
+	_setup_reactions()
 
+	# The systems are live and must run even if the log file cannot be opened;
+	# _log_message already no-ops when _log_file is null.
 	_initialized = true
-	print("Brain Rot %s loaded" % VERSION)
+	_setup_log_file()
 
 
 func _on_config_changed(mod_id: String, key: String, value) -> void:
@@ -132,6 +152,52 @@ func _setup_achievement_system() -> void:
 	_achievement_layer.add_child(_achievement_panel)
 
 
+func _setup_reactions() -> void:
+	"""Initialize the reaction evaluator and player (console placeholder)."""
+	var base_dir := "res://mods/BrainRot"
+
+	var ReactionEvaluator = load(base_dir.path_join("reactions/reaction_evaluator.gd"))
+	_reaction_evaluator = ReactionEvaluator.new()
+
+	# Reactions print to the console and the session log.
+	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
+	_reaction_player = ReactionPlayer.new(_print_notice)
+
+
+## Create/open the session log and write the startup banner (Creature Comforts layout).
+func _setup_log_file() -> void:
+	var dir_path := ProjectSettings.globalize_path(OUTPUT_DIR)
+	var dir_result := DirAccess.make_dir_recursive_absolute(dir_path)
+	if dir_result != OK and dir_result != ERR_ALREADY_EXISTS:
+		push_error("Brain Rot: Failed to create directory %s: %s" % [dir_path, error_string(dir_result)])
+		return
+
+	_log_path = OUTPUT_DIR.path_join(LOG_FILE)
+	var abs_log_path := ProjectSettings.globalize_path(_log_path)
+
+	if not FileAccess.file_exists(_log_path):
+		var file := FileAccess.open(_log_path, FileAccess.WRITE)
+		if file == null:
+			push_error("Brain Rot: Cannot create log file %s: %s" % [abs_log_path, error_string(FileAccess.get_open_error())])
+			return
+		file.close()
+
+	# Keep one append handle open for the session instead of reopening per line.
+	_log_file = FileAccess.open(_log_path, FileAccess.READ_WRITE)
+	if _log_file == null:
+		push_error("Brain Rot: Cannot open log file %s: %s" % [abs_log_path, error_string(FileAccess.get_open_error())])
+		return
+	_log_file.seek_end()
+
+	_log_message("=".repeat(80))
+	_log_message("Brain Rot %s" % VERSION)
+	_log_message("Initialized at %s" % _timestamp())
+	_log_message("Log file: %s" % abs_log_path)
+	_log_message("=".repeat(80))
+
+	print("Brain Rot %s loaded - logging to %s" % [VERSION, abs_log_path])
+
+
 func _process(_delta: float) -> void:
 	if not _initialized:
 		return
@@ -155,6 +221,8 @@ func _inspect_current_phase() -> void:
 	# Run-scoped achievements are evaluated every poll (the Twins transformation
 	# happens in the shop, but polling all phases keeps the team baseline current).
 	_poll_achievements(run_snapshot)
+	_poll_reactions(run_snapshot)
+	_log_run_progress(run_snapshot)
 
 	var battle_snapshot: Dictionary = {}
 	if is_battle:
@@ -190,6 +258,13 @@ func _poll_battle_achievements(battle_snapshot: Dictionary) -> void:
 	_award_achievements(_achievement_evaluator.poll_battle(battle_snapshot))
 
 
+## Poll the run snapshot for newly triggered reactions and play them.
+func _poll_reactions(run_snapshot: Dictionary) -> void:
+	if _reaction_evaluator == null or _reaction_player == null:
+		return
+	_reaction_player.play_all(_reaction_evaluator.poll(run_snapshot))
+
+
 ## Persist newly earned achievements (deduplicated by the store). The panel is
 ## optional: unlocks are saved even when it is absent or notifications are disabled.
 func _award_achievements(earned: Array) -> void:
@@ -206,7 +281,7 @@ func _award_achievements(earned: Array) -> void:
 
 		if not _achievement_store.mark_completed(id):
 			continue
-		print("Brain Rot: EARNED | %s | %s" % [id, title])
+		_print_notice("Brain Rot: EARNED | %s | %s" % [id, title])
 		if _achievement_notifications and _achievement_panel != null:
 			_achievement_panel.show_achievement(title, description)
 
@@ -215,15 +290,16 @@ func _award_achievements(earned: Array) -> void:
 ##
 ## No verified run-start/run-end signal exists (Creature Comforts only compares
 ## trainer_id between snapshots), so transitions are inferred from:
-##   - the run becoming unavailable,
 ##   - a different run object instance,
 ##   - a different trainer_id,
 ##   - current_round going backwards.
 ## Each trigger is logged so the first real session can confirm which one fires.
+##
+## An unavailable run (menu, transition) does NOT clear tracking: the comparison on
+## return is what detects a new run. Clearing here would hide a new run whose only
+## evidence was the gap, and would re-arm reactions after a menu round-trip.
 func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 	if run_snapshot.is_empty():
-		# Run unavailable (menu, transition). Forget tracking so the next run resets.
-		_run_tracking = {}
 		return
 
 	var instance_id: int = run.get_instance_id() if is_instance_valid(run) else 0
@@ -250,7 +326,7 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 		_run_tracking["current_round"] = current_round
 		return
 
-	print("Brain Rot: run reset (%s)" % reason)
+	_print_notice("Brain Rot: run reset (%s)" % reason)
 	_run_tracking = {
 		"run_instance_id": instance_id,
 		"trainer_id": trainer_id,
@@ -258,8 +334,32 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 	}
 	if _achievement_evaluator != null:
 		_achievement_evaluator.reset_run()
+	if _reaction_evaluator != null:
+		_reaction_evaluator.reset_run()
 	if _battle_completion != null:
 		_battle_completion.reset()
+
+
+## Debug aid: log the run's day/lives/wins whenever the triple changes. Verifies the
+## field mapping, the starting lives value, and when wins/lives are committed.
+func _log_run_progress(run_snapshot: Dictionary) -> void:
+	if _state_capture == null or not _state_capture.is_enabled():
+		return
+	if run_snapshot.is_empty():
+		return
+	var signature := "%s|%s|%s" % [
+		str(run_snapshot.get("current_round", "?")),
+		str(run_snapshot.get("lives", "?")),
+		str(run_snapshot.get("current_wins", "?")),
+	]
+	if signature == _last_progress_signature:
+		return
+	_last_progress_signature = signature
+	_log_event("RUN PROGRESS | Day %s, Lives %s, Wins %s" % [
+		str(run_snapshot.get("current_round", "?")),
+		str(run_snapshot.get("lives", "?")),
+		str(run_snapshot.get("current_wins", "?")),
+	])
 
 
 ## Debug aid: log per-slot unit counts and the species resolved from the team slot.
@@ -283,7 +383,7 @@ func _log_battle_attribution(battle_snapshot: Dictionary) -> void:
 		if slot >= 0 and slot < team.size():
 			species = str(team[slot].get("name_key", "")) if team[slot] is Dictionary else ""
 		parts.append("slot %d x%d -> %s" % [slot, int(counts[slot]), species if not species.is_empty() else "?"])
-	print("Brain Rot: battle attribution | %s" % ", ".join(parts))
+	_log_event("BATTLE ATTRIBUTION | %s" % ", ".join(parts))
 
 
 ## Write the snapshot to the debug dump directory when capture is enabled.
@@ -291,6 +391,39 @@ func _maybe_capture(snapshot: Dictionary) -> void:
 	if _state_capture == null or snapshot.is_empty():
 		return
 	_state_capture.capture(snapshot)
+
+
+# Logging (mirrors Creature Comforts' mod_main logging helpers)
+
+## Write one line to the session log. No-ops when the log file is unavailable.
+func _log_message(message: String) -> void:
+	if _log_file == null:
+		return
+	_log_file.store_line(message)
+	_log_file.flush()
+
+
+## Timestamped diagnostic line: file only, "[HH:MM:SS] message".
+func _log_event(message: String) -> void:
+	_log_message("[%s] %s" % [_time_short(), message])
+
+
+## User-visible line: console and file, no timestamp prefix.
+func _print_notice(message: String) -> void:
+	print(message)
+	_log_message(message)
+
+
+func _timestamp() -> String:
+	var dt := Time.get_datetime_dict_from_system(false)
+	return "%04d-%02d-%02d %02d:%02d:%02d" % [
+		dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
+	]
+
+
+func _time_short() -> String:
+	var dt := Time.get_datetime_dict_from_system(false)
+	return "%02d:%02d:%02d" % [dt.hour, dt.minute, dt.second]
 
 
 # Utility functions

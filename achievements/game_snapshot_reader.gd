@@ -9,7 +9,9 @@ extends RefCounted
 ##     {
 ##       "kind": "run",
 ##       "trainer_id": String,            # only when the run exposes it
-##       "current_round": int,            # only when the run exposes it
+##       "current_round": int,            # only when the run exposes a number
+##       "lives": int,                    # only when the run exposes a number
+##       "current_wins": int,             # only when the run exposes a number
 ##       "team": [monster, ...],          # only when the run exposes it
 ##       "bench": [monster, ...],         # only when the run exposes it
 ##     }
@@ -26,10 +28,12 @@ extends RefCounted
 ## unit: {"team_id": int, "slot_index": int, "shield_granted": float}, same rule.
 ##
 ## Unknown values are represented by an ABSENT key, never a default. Defaults belong
-## to the rules (the evaluator), not to the reader.
+## to the rules (the evaluator), not to the reader. Numeric fields are emitted only
+## when the live value is a number: a missing, null, or non-numeric value is absent
+## (and never raises, unlike a bare int(null)).
 ##
 ## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
-##   run: trainer_id, current_round, team, bench
+##   run: trainer_id, current_round, lives, current_wins, team, bench
 ##   monster: data.name_key, level
 ##   battle: simulation.data.battle_over,
 ##           simulation.data.battle_units[].{team_id, slot_index, shield_granted}
@@ -101,8 +105,10 @@ func _read_run_fields(run, kind: String) -> Dictionary:
 		return snapshot
 	if _has_prop.call(run, "trainer_id"):
 		snapshot["trainer_id"] = str(run.get("trainer_id"))
-	if _has_prop.call(run, "current_round"):
-		snapshot["current_round"] = int(run.get("current_round"))
+	for number_name in ["current_round", "lives", "current_wins"]:
+		var number = _read_int(run, number_name)
+		if number != null:
+			snapshot[number_name] = number
 	for list_name in ["team", "bench"]:
 		if _has_prop.call(run, list_name):
 			snapshot[list_name] = _read_monsters(run.get(list_name))
@@ -142,6 +148,19 @@ func _read_battle_units(units) -> Array:
 			entry["shield_granted"] = float(unit.get("shield_granted"))
 		out.append(entry)
 	return out
+
+
+## Integer value of a live object's property, or null when missing/null/non-numeric.
+## Accepts int and float (floats are truncated) so a numeric field never raises.
+func _read_int(obj, property: String):
+	if not _has_prop.call(obj, property):
+		return null
+	var value = obj.get(property)
+	if typeof(value) == TYPE_INT:
+		return int(value)
+	if typeof(value) == TYPE_FLOAT:
+		return int(value)
+	return null
 
 
 func _is_live(obj) -> bool:
