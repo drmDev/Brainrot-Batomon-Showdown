@@ -12,5 +12,5 @@ Desktop.ini
 plans/
 dev/*
 !dev/dev_config.gd
-agent.md
+_agent.md
 achievements.json
