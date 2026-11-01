@@ -1,5 +1,5 @@
 extends RefCounted
-## TestHelpers - fakes and builders for the Batomon Achievements tests.
+## TestHelpers - fakes and builders for the Brain Rot achievement tests.
 ##
 ## FakeObject exists because achievement_evaluator.gd guards with is_instance_valid(),
 ## which returns false for Dictionaries. Fakes must be Object instances (RefCounted).

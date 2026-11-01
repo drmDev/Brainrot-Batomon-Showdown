@@ -1,16 +1,16 @@
 {
-	"id": "batomon_achievements",
-	"name": "Batomon Achievements",
-	"version": "9.0.0.3",
+	"id": "brain_rot",
+	"name": "Brain Rot",
+	"version": "0.0.0.4",
 	"author": "NescapePlan",
-	"description": "Achievement detection, persistence, and unlock toasts for Batomon Showdown",
+	"description": "Fun additions for Batomon Showdown, starting with achievements",
 	"settings": [
 		{
 			"key": "achievement_notifications",
 			"label": "Achievement Notifications",
 			"type": "bool",
 			"default": false,
-			"description": "Show the achievement toast after a battle completes"
+			"description": "Show toast notifications when an achievement is unlocked"
 		}
 	]
 }

@@ -71,7 +71,7 @@ func _load() -> void:
 		return
 	var file := FileAccess.open(_path, FileAccess.READ)
 	if file == null:
-		push_warning("Batomon Achievements: cannot read achievements file: " + _path)
+		push_warning("Brain Rot: cannot read achievements file: " + _path)
 		return
 	var text := file.get_as_text()
 	file.close()
@@ -83,13 +83,13 @@ func _load() -> void:
 		if not (_data.get("achievements") is Dictionary):
 			_data["achievements"] = {}
 	else:
-		push_warning("Batomon Achievements: invalid achievements JSON, starting fresh: " + _path)
+		push_warning("Brain Rot: invalid achievements JSON, starting fresh: " + _path)
 
 
 func _save() -> void:
 	var file := FileAccess.open(_path, FileAccess.WRITE)
 	if file == null:
-		push_warning("Batomon Achievements: cannot write achievements file: " + _path)
+		push_warning("Brain Rot: cannot write achievements file: " + _path)
 		return
 	file.store_string(JSON.stringify(_data, "\t"))
 	file.close()

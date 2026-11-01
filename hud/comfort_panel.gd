@@ -1,5 +1,5 @@
 extends Control
-## ComfortPanel - shared foundation for Batomon Achievements HUD panels.
+## ComfortPanel - shared foundation for Brain Rot HUD panels.
 ##
 ## Provides the common dark-navy/gold palette, the Consolas-with-fallbacks font,
 ## shadowed text drawing, and viewport-resize plumbing used by the drawing panels.

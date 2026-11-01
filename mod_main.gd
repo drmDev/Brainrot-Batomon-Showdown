@@ -1,15 +1,13 @@
 extends Node
-## Batomon Achievements - standalone achievement detection, persistence, and toast.
+## Brain Rot - achievement detection, persistence, and toast.
 ##
 ## Polls the live run and battle state every 500 ms, evaluates achievements via
 ## achievements/achievement_evaluator.gd, persists completion through
 ## achievements/achievement_store.gd, and shows a bottom-right toast through
 ## achievements/achievement_panel.gd when the Achievement Notifications setting is on.
-##
-## This mod is self-contained: it does not depend on Creature Comforts.
 
-const VERSION := "9.0.0.3"
-const MOD_ID := "batomon_achievements"
+const VERSION := "0.0.0.4"
+const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 
 # Polling interval (matches the game's shop/battle state cadence)
@@ -18,7 +16,7 @@ const POLL_INTERVAL_MS := 500
 # Optional debug capture. When set to an absolute directory, each changed run/battle
 # snapshot is written there as JSON for replay under tests/ (see dev/QUALITY.md).
 # Unset during normal play, so nothing is written.
-const DUMP_ENV_VAR := "BATOMON_ACHIEVEMENTS_DUMP_DIR"
+const DUMP_ENV_VAR := "BRAINROT_DUMP_DIR"
 
 # Settings (defaults match mod.json)
 const DEFAULT_ACHIEVEMENT_NOTIFICATIONS := false
@@ -75,7 +73,7 @@ func _load_settings() -> void:
 			mod_loader.connect("config_changed", _on_config_changed)
 	elif not _settings_warning_shown:
 		_settings_warning_shown = true
-		push_warning("Batomon Achievements: ModLoader.get_config() not available, using defaults")
+		push_warning("Brain Rot: ModLoader.get_config() not available, using defaults")
 
 
 func _initialize_mod() -> void:
@@ -87,7 +85,7 @@ func _initialize_mod() -> void:
 	_setup_achievement_system()
 
 	_initialized = true
-	print("Batomon Achievements %s loaded" % VERSION)
+	print("Brain Rot %s loaded" % VERSION)
 
 
 func _on_config_changed(mod_id: String, key: String, value) -> void:
@@ -103,7 +101,7 @@ func _on_config_changed(mod_id: String, key: String, value) -> void:
 
 func _setup_achievement_system() -> void:
 	"""Initialize the achievement detection, persistence, and panel system."""
-	var base_dir := "res://mods/BatomonAchievements"
+	var base_dir := "res://mods/BrainRot"
 
 	var BattleCompletionDetector = load(base_dir.path_join("achievements/battle_completion_detector.gd"))
 	_battle_completion = BattleCompletionDetector.new()
@@ -118,7 +116,7 @@ func _setup_achievement_system() -> void:
 	# Dedicated layer so the toast can appear over the battle results screen.
 	_achievement_layer = CanvasLayer.new()
 	_achievement_layer.layer = 100
-	_achievement_layer.name = "BatomonAchievements_Layer"
+	_achievement_layer.name = "BrainRot_Layer"
 	add_child(_achievement_layer)
 
 	var AchievementPanel = load(base_dir.path_join("achievements/achievement_panel.gd"))
@@ -198,7 +196,7 @@ func _award_achievements(earned: Array) -> void:
 			continue
 
 		_achievement_store.mark_completed(id)
-		print("Batomon Achievements: EARNED | %s | %s" % [id, title])
+		print("Brain Rot: EARNED | %s | %s" % [id, title])
 		if _achievement_notifications:
 			_achievement_panel.show_achievement(title, description)
 
@@ -251,7 +249,7 @@ func _maybe_dump_state(state, is_battle: bool) -> void:
 	var file_path := _dump_dir.path_join("state_%06d_%d.json" % [_dump_counter, Time.get_ticks_msec()])
 	var file := FileAccess.open(file_path, FileAccess.WRITE)
 	if file == null:
-		push_warning("Batomon Achievements: cannot write state dump: " + file_path)
+		push_warning("Brain Rot: cannot write state dump: " + file_path)
 		return
 	file.store_string(JSON.stringify(snapshot, "\t"))
 	file.close()

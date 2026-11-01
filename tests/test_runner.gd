@@ -1,5 +1,5 @@
 extends RefCounted
-## TestRunner - minimal zero-dependency test harness for Batomon Achievements.
+## TestRunner - minimal zero-dependency test harness for Brain Rot.
 ##
 ## Test files extend this script and define `test_*` methods. run_all() discovers
 ## and executes them, recording assertion failures. GDScript has no try/catch, so a

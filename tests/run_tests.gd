@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless test entry point for Batomon Achievements.
+## Headless test entry point for Brain Rot.
 ##
 ## Run with:
 ##   godot --headless --script tests/run_tests.gd

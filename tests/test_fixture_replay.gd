@@ -5,7 +5,7 @@ extends "test_runner.gd"
 ##   - Curated: {"steps": [ {kind, trainer_id, current_round, team, bench,
 ##       battle_over, battle_units, expect: [...]} ]}. Each step asserts the exact
 ##       set of award ids ("expect") so the rules are pinned to documented data.
-##   - Captured: a flat snapshot written by mod_main's BATOMON_ACHIEVEMENTS_DUMP_DIR
+##   - Captured: a flat snapshot written by mod_main's BRAINROT_DUMP_DIR
 ##       hook (a single {kind, ...} object, no "steps"/"expect"). These assert only
 ##       that the evaluator accepts the real shape without crashing.
 
