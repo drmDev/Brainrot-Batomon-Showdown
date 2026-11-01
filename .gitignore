@@ -1,0 +1,15 @@
+# Godot-generated files
+.godot/
+*.tmp
+
+# Editor and operating-system files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# misc
+plans/
+dev/*
+!dev/dev_config.gd
+agent.md

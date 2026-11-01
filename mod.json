@@ -1,0 +1,16 @@
+{
+	"id": "batomon_achievements",
+	"name": "Batomon Achievements",
+	"version": "9.0.0.3",
+	"author": "NescapePlan",
+	"description": "Achievement detection, persistence, and unlock toasts for Batomon Showdown",
+	"settings": [
+		{
+			"key": "achievement_notifications",
+			"label": "Achievement Notifications",
+			"type": "bool",
+			"default": false,
+			"description": "Show the achievement toast after a battle completes"
+		}
+	]
+}
