@@ -5,6 +5,17 @@ Brain Rot (`brain_rot`) is a standalone GDScript mod for **Batomon Showdown**. A
 
 The achievement system polls the live run and battle state every 500 ms, evaluates achievements, writes completion to `achievements.json` at the mod root, and shows a bottom-right toast when the Achievement Notifications setting is enabled. It is self-contained and does not depend on other mods.
 
+## Previous Mod
+Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalone mod**. Creature Comforts contains a lot of solid, working code (game-state access, node paths, signals, HUD panels, persistence, test tooling) that should be reused to ease implementation.
+
+- Reference location: `C:\Program Files (x86)\Steam\steamapps\common\Batomon Showdown\Mods\CreatureComforts` — read its `agent.md` first.
+- **Reuse, don't depend:** when existing Creature Comforts code does what is needed, copy and adapt it into this repo (keep Brain Rot's own naming/ids). Never reference, load, or require Creature Comforts files or autoloads at runtime; Brain Rot must work with Creature Comforts absent.
+- **Reference is read-only:** do not modify anything under the Creature Comforts directory.
+- **Prefer proven code:** before writing new inspection or game-API logic, check Creature Comforts for a working equivalent. Its verified identifiers (node paths, properties, signals) may be trusted; do not extrapolate beyond what it demonstrates.
+- **Copy only what's needed:** bring over the minimum required for the current feature, not whole files or unrelated systems.
+- **Note provenance:** when adapting a non-trivial piece of code, add a brief comment or mention in the summary stating which Creature Comforts file it came from.
+- Where this file and Creature Comforts' `agent.md` conflict, this file wins for Brain Rot.
+
 ## Preserve Existing Functionality
 - Prefer surgical changes over large refactors.
 - Do not modify unrelated systems unless necessary.
@@ -19,7 +30,6 @@ The achievement system polls the live run and battle state every 500 ms, evaluat
 - Be concise and direct.
 - Assume I am an experienced software developer.
 - When changes are complete, summarize what changed, what to test, and any remaining concerns.
-
 
 ## Achievements
 - **So I started blasting** - Gentleman owns a level-2 Rhizuka on Day 5 or earlier (`run.current_round`), checked from team + bench.
