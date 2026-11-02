@@ -99,8 +99,15 @@ func _ids(reactions: Array) -> Array:
 
 
 ## The single expected detail line for a match.
-func _detail(slot: int, species: String, label: String, value: int) -> String:
-	return "slot %d %s %s %d" % [slot, species, label, value]
+func _detail(species: String, label: String, value: int) -> String:
+	return "%s %s %d" % [_display_species(species), label, value]
+
+
+## Test-side mirror of the evaluator's species display formatting.
+func _display_species(species_key: String) -> String:
+	if species_key.is_empty() or species_key == "?":
+		return "Unknown"
+	return species_key.split(".")[-1].capitalize()
 
 
 func _temp_dir() -> String:
@@ -344,7 +351,7 @@ func test_battle_each_metric_triggers_for_every_reaction() -> void:
 				assert_eq(str(earned[0].get("id", "")), str(case["id"]), label)
 				assert_eq(
 					str(earned[0].get("detail", "")),
-					_detail(0, CINNABARK, str(metric["label"]), value),
+					_detail(CINNABARK, str(metric["label"]), value),
 					label
 				)
 
@@ -395,7 +402,7 @@ func test_battle_lowest_slot_wins() -> void:
 		if earned.size() == 1:
 			assert_eq(
 				str(earned[0].get("detail", "")),
-				_detail(1, RHIZUKA, "heal", value),
+				_detail(RHIZUKA, "heal", value),
 				str(case["id"])
 			)
 
@@ -411,7 +418,7 @@ func test_battle_same_unit_multiple_metrics_fire_once_for_first_metric() -> void
 		if earned.size() == 1:
 			assert_eq(
 				str(earned[0].get("detail", "")),
-				_detail(0, CINNABARK, "damage", value),
+				_detail(CINNABARK, "damage", value),
 				str(case["id"])
 			)
 
@@ -429,7 +436,7 @@ func test_battle_fires_once_even_with_many_matches() -> void:
 		if earned.size() == 1:
 			assert_eq(
 				str(earned[0].get("detail", "")),
-				_detail(0, CINNABARK, "damage", value),
+				_detail(CINNABARK, "damage", value),
 				str(case["id"])
 			)
 		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
@@ -503,7 +510,7 @@ func test_battle_empty_snapshot_does_not_trigger() -> void:
 	assert_empty(_new_evaluator().poll_battle({}))
 
 
-func test_battle_unknown_species_logs_question_mark() -> void:
+func test_battle_unknown_species_logs_unknown() -> void:
 	for case in BATTLE_CASES:
 		var value := int(case["value"])
 		var evaluator = _new_evaluator()
@@ -512,7 +519,7 @@ func test_battle_unknown_species_logs_question_mark() -> void:
 		if earned.size() == 1:
 			assert_eq(
 				str(earned[0].get("detail", "")),
-				_detail(3, "?", "damage", value),
+				_detail("?", "damage", value),
 				str(case["id"])
 			)
 
@@ -592,7 +599,7 @@ func test_over_9000_each_dot_metric_triggers_with_actual_total() -> void:
 			assert_eq(str(earned[0].get("id", "")), OVER_9000, key)
 			assert_eq(
 				str(earned[0].get("detail", "")),
-				_detail(0, CINNABARK, str(metric["label"]), 9002),
+				_detail(CINNABARK, str(metric["label"]), 9002),
 				key
 			)
 
@@ -637,7 +644,7 @@ func test_over_9000_lowest_slot_wins() -> void:
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(1, RHIZUKA, "poison", 9001))
+		assert_eq(str(earned[0].get("detail", "")), _detail(RHIZUKA, "poison", 9001))
 
 
 func test_over_9000_first_dot_metric_wins_within_a_slot() -> void:
@@ -648,7 +655,7 @@ func test_over_9000_first_dot_metric_wins_within_a_slot() -> void:
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(0, CINNABARK, "burn", 9001))
+		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "burn", 9001))
 
 
 func test_over_9000_mid_fight_snapshot_does_not_trigger() -> void:

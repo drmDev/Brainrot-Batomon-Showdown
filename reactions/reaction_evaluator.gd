@@ -42,8 +42,7 @@ extends RefCounted
 ##     same rule for 69. Checked once the battle is over, not while it is running.
 ##     All six are accumulated per-battle counters: damage_dealt, healing_done,
 ##     shield_granted, burn_inflicted, poison_inflicted, shock_inflicted. The log
-##     names the unit (slot + species) and the metric; only the lowest matching slot
-##     is reported.
+##     names the species and the metric; only the lowest matching slot is reported.
 ## - "four_twenty" / "six_six_six"
 ##   Run income condition: shop income equals 420 (four_twenty) or 666 (six_six_six).
 ##   Battle condition: any player-side unit's FINAL battle total is exactly 420 (or
@@ -55,7 +54,7 @@ extends RefCounted
 ##   Battle condition: any player-side unit's FINAL battle total is strictly greater
 ##     than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
 ##     considered. 9000 itself does not fire; 9001 does. The log reports the actual
-##     total (e.g. "slot 1 monster.name.x poison 9002"), not the threshold.
+##     total (e.g. "Furnadon poison 9002"), not the threshold.
 ## - "flawless_victory"
 ##   Battle-outcome condition: evaluated only at battle_over from the battle
 ##     snapshot's `outcome` (the COMMITTED promoted-run totals, not the pre-battle
@@ -229,9 +228,8 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 		var slot := int(found.get("slot", -1))
 		triggered.append({
 			"id": id,
-			"detail": "slot %d %s %s %d" % [
-				slot,
-				_species_at(team, slot),
+			"detail": "%s %s %d" % [
+				_species_display_name_at(team, slot),
 				str(found.get("label", "")),
 				int(found.get("value", 0)),
 			],
@@ -404,12 +402,26 @@ func _matching_total(unit: Dictionary, metric: Dictionary, reaction: Dictionary)
 	return null
 
 
-## Species name_key of the team slot, or "?" when unavailable.
-func _species_at(team: Array, slot: int) -> String:
+## Display name of the species in a team slot, or "Unknown" when unavailable.
+func _species_display_name_at(team: Array, slot: int) -> String:
 	if slot < 0 or slot >= team.size():
-		return "?"
+		return "Unknown"
 	var entry = team[slot]
 	if not entry is Dictionary:
-		return "?"
+		return "Unknown"
 	var key := str(entry.get("name_key", ""))
-	return key if not key.is_empty() else "?"
+	return _format_species_name(key) if not key.is_empty() else "Unknown"
+
+
+## Species key -> display name ("monster.name.beetdown" -> "Beetdown").
+## Mirrors Creature Comforts' log_formatter.format_species_name: prefer a
+## TranslationServer entry, then strip the key prefix and capitalize.
+func _format_species_name(species_key: String) -> String:
+	if TranslationServer.has_method("translate"):
+		var translated := TranslationServer.translate(species_key)
+		if translated != species_key:
+			return translated
+	var name_key := species_key
+	if "." in name_key:
+		name_key = name_key.split(".")[-1]
+	return name_key.capitalize()

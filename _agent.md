@@ -70,7 +70,7 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
 - **six_seven** triggers on any of:
   - **Run layout:** Lives == 6 AND (Day == 7 OR Wins == 7).
   - **Income:** derived shop income == 67.
-  - **Battle:** any player-side unit's **final** battle total is exactly 67 on damage, heal, shield, burn, poison, or shock. Evaluated only at `battle_over`, never mid-fight. Logs `Brain Rot: REACTION | six_seven | slot <n> <species> <metric> 67`.
+  - **Battle:** any player-side unit's **final** battle total is exactly 67 on damage, heal, shield, burn, poison, or shock. Evaluated only at `battle_over`, never mid-fight. Logs `Brain Rot: REACTION | six_seven | <Species> <metric> 67` (e.g. `Beetdown damage 67`).
   - Run details are built from whichever triggers matched (`Lives 6, Day 7`, `Lives 6, Wins 7`, `Income 67`, or comma-joined when several match).
 - **six_nine** is the same shape for Day 9 / Wins 9 / income 69, plus battle total 69. Title: `6 9`.
 - **four_twenty** (420) and **six_six_six** (666): income equals the value (run-scoped) OR any player-side unit's **final** battle total equals the value on damage, heal, shield, burn, poison, or shock. Battle timing, lowest-slot, and first-metric rules match six_seven. Logs `Income 420` / `Income 666` or the battle detail.
