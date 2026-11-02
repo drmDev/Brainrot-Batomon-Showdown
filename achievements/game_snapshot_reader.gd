@@ -13,6 +13,7 @@ extends RefCounted
 ##       "current_round": int,            # only when the run exposes a number
 ##       "lives": int,                    # only when the run exposes a number
 ##       "current_wins": int,             # only when the run exposes a number
+##       "income": int,                   # derived shop income (see _read_income)
 ##       "team": [monster, ...],          # only when the run exposes it
 ##       "bench": [monster, ...],         # only when the run exposes it
 ##     }
@@ -39,7 +40,8 @@ extends RefCounted
 ## (and never raises, unlike a bare int(null)).
 ##
 ## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
-##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench
+##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench,
+##        _active_passives[].gold_gain (income derivation only)
 ##   monster: data.name_key, level
 ##   battle: simulation.data.battle_over,
 ##           simulation.data.battle_units[].{team_id, slot_index, shield_granted,
@@ -50,6 +52,11 @@ extends RefCounted
 
 const KIND_RUN := "run"
 const KIND_BATTLE := "battle"
+
+## Shop income schedule, copied from Creature Comforts' _compute_daily_income:
+## BASE_INCOME + INCOME_PER_DAY * (day - 1), plus each active passive's gold_gain.
+const BASE_INCOME := 35
+const INCOME_PER_DAY := 5
 
 # Shared property probe (mod_main passes its _has_property Callable).
 var _has_prop: Callable
@@ -114,10 +121,32 @@ func _read_run_fields(run, kind: String) -> Dictionary:
 		var number = _read_int(run, number_name)
 		if number != null:
 			snapshot[number_name] = number
+	var day = snapshot.get("current_round")
+	if day is int:
+		snapshot["income"] = _read_income(run, int(day))
 	for list_name in ["team", "bench"]:
 		if _has_prop.call(run, list_name):
 			snapshot[list_name] = _read_monsters(run.get(list_name))
 	return snapshot
+
+
+## Derived shop income for the run: the game's daily schedule plus passive bonuses.
+## Mirrors Creature Comforts' _compute_daily_income exactly. Emitted only when the
+## day is known; without it the schedule cannot be computed.
+func _read_income(run, day: int) -> int:
+	var income := BASE_INCOME + INCOME_PER_DAY * maxi(day - 1, 0)
+	if not _has_prop.call(run, "_active_passives"):
+		return income
+	var passives = run.get("_active_passives")
+	if not passives is Array:
+		return income
+	for passive in passives:
+		if not _is_live(passive):
+			continue
+		var gain = _read_int(passive, "gold_gain")
+		if gain != null:
+			income += gain
+	return income
 
 
 func _read_monsters(monsters) -> Array:

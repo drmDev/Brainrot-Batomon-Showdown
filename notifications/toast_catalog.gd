@@ -84,14 +84,23 @@ static func _append_reaction(out: Array, seen: Dictionary, reaction, run_scoped:
 	})
 
 
-## Representative detail text for a reaction preview. Run reactions reuse the
-## exact detail gameplay logs; battle reactions show the threshold they match.
+## Representative detail text for a reaction preview. Run reactions mirror the
+## [Lives, Day, Wins] / income triggers; battle reactions show the threshold.
 static func _reaction_description(reaction: Dictionary, run_scoped: bool) -> String:
 	if run_scoped:
-		return "Lives %d, Wins %d" % [
-			int(reaction.get("lives", 0)),
-			int(reaction.get("wins", 0)),
-		]
+		var parts: PackedStringArray = []
+		if reaction.has("lives"):
+			parts.append("Lives %d" % int(reaction.get("lives")))
+		if reaction.has("day"):
+			parts.append("Day %d" % int(reaction.get("day")))
+		if reaction.has("wins"):
+			parts.append("Wins %d" % int(reaction.get("wins")))
+		if reaction.has("income"):
+			if str(reaction.get("income_comparison", ReactionEvaluator.COMPARISON_EQUALS)) == ReactionEvaluator.COMPARISON_GREATER_THAN:
+				parts.append("Income > %d" % int(reaction.get("income")))
+			else:
+				parts.append("Income %d" % int(reaction.get("income")))
+		return ", ".join(parts)
 	var value := int(reaction.get("value", 0))
 	if str(reaction.get("comparison", ReactionEvaluator.COMPARISON_EQUALS)) == ReactionEvaluator.COMPARISON_GREATER_THAN:
 		return "Battle total > %d" % value

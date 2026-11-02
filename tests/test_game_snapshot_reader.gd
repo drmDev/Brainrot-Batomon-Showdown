@@ -151,6 +151,52 @@ func test_read_run_float_numeric_values_are_truncated() -> void:
 	assert_eq(snapshot.get("current_wins"), 7)
 
 
+# --- read_run: derived shop income ---
+
+func test_read_run_income_uses_day_and_passive_bonuses() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"current_round": 4,
+		"_active_passives": [
+			TestHelpers.FakeObject.new({"gold_gain": 10}),
+			TestHelpers.FakeObject.new({"gold_gain": 7}),
+		],
+	})
+	# BASE_INCOME + INCOME_PER_DAY * (day - 1) + passive bonuses.
+	assert_eq(_new_reader().read_run(run).get("income"), 35 + 5 * 3 + 17)
+
+
+func test_read_run_income_is_base_schedule_without_passives() -> void:
+	var run = TestHelpers.FakeObject.new({"current_round": 1})
+	assert_eq(_new_reader().read_run(run).get("income"), 35)
+
+
+func test_read_run_income_absent_without_day() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"_active_passives": [TestHelpers.FakeObject.new({"gold_gain": 10})],
+	})
+	assert_false(_new_reader().read_run(run).has("income"))
+
+
+func test_read_run_income_ignores_invalid_passives() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"current_round": 2,
+		"_active_passives": [
+			null,
+			TestHelpers.FakeObject.new({}),
+			TestHelpers.FakeObject.new({"gold_gain": 5.0}),
+			TestHelpers.FakeObject.new({"gold_gain": 3}),
+		],
+	})
+	# Invalid entries contribute nothing; numeric floats truncate like int(value).
+	assert_eq(_new_reader().read_run(run).get("income"), 35 + 5 + 5 + 3)
+
+
+func test_read_battle_includes_derived_income() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var snapshot: Dictionary = _new_reader().read_battle(TestHelpers.FakeObject.new({}), run)
+	assert_eq(snapshot.get("income"), 35 + 5 * 2)
+
+
 # --- read_battle ---
 
 func test_read_battle_null_state_returns_empty() -> void:

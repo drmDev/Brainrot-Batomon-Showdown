@@ -13,6 +13,7 @@ const NotificationRequest = preload("../notifications/notification_request.gd")
 ## Toast titles per reaction id. Unknown ids fall back to the id itself.
 const REACTION_TITLES := {
 	"six_seven": "6 7",
+	"six_nine": "6 9",
 	"four_twenty": "Blaze It",
 	"six_six_six": "Number of the Beast",
 	"over_9000": "It's Over 9000!",

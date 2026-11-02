@@ -28,35 +28,49 @@ extends RefCounted
 ## can allow a reaction to trigger again within a continuing run.
 ##
 ## Reactions:
-## - "six_seven"
-##   Run condition: remaining Lives == 6 AND committed cumulative Wins == 7.
-##     A run starts with 10 lives, so this is 4 lives lost and 7 wins.
-##     Fields: run.lives and run.current_wins (RunManager.data), read from the same
-##     snapshot so both values come from one poll. Missing, null, or non-numeric
-##     values never match.
-##   Battle condition: any player-side unit's FINAL battle total is exactly 67 on one
-##     of these metrics: damage, heal, shield, burn, poison, shock. Checked once the
-##     battle is over, not while it is running. All six are accumulated per-battle
-##     counters: damage_dealt, healing_done, shield_granted, burn_inflicted,
-##     poison_inflicted, shock_inflicted. The log names the unit (slot + species) and
-##     the metric. Only the lowest matching slot is reported.
+## - "six_seven" / "six_nine"
+##   Run condition: remaining Lives == 6 AND the shop's [Lives, Day, Wins] layout
+##     reaches the target: Day 7 or Wins 7 for six_seven; Day 9 or Wins 9 for
+##     six_nine. Fields: run.lives, run.current_round (Day), run.current_wins.
+##     A run starts with 10 lives, so this is 4 lives lost. Missing, null, or
+##     non-numeric values never match.
+##   Income condition: the derived shop income equals 67 (six_seven) or 69
+##     (six_nine). Income is NOT current gold; see
+##     game_snapshot_reader._read_income.
+##   Battle condition for six_seven: any player-side unit's FINAL battle total is
+##     exactly 67 on damage, heal, shield, burn, poison, or shock. six_nine uses the
+##     same rule for 69. Checked once the battle is over, not while it is running.
+##     All six are accumulated per-battle counters: damage_dealt, healing_done,
+##     shield_granted, burn_inflicted, poison_inflicted, shock_inflicted. The log
+##     names the unit (slot + species) and the metric; only the lowest matching slot
+##     is reported.
 ## - "four_twenty" / "six_six_six"
-##   Battle condition only: any player-side unit's FINAL battle total is exactly 420
-##     (or 666) on one of the same six metrics. Same timing and reporting rules as
-##     six_seven's battle condition. No run condition (lives/wins are not involved).
-##   These are rows in BATTLE_REACTIONS; adding another value reaction is one row.
+##   Run income condition: shop income equals 420 (four_twenty) or 666 (six_six_six).
+##   Battle condition: any player-side unit's FINAL battle total is exactly 420 (or
+##     666) on one of the same six metrics. Same timing and reporting rules as
+##     six_seven's battle condition. These are rows in REACTIONS (income) and
+##     BATTLE_REACTIONS (unit totals).
 ## - "over_9000"
-##   Battle condition only: any player-side unit's FINAL battle total is strictly
-##     greater than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
+##   Run income condition: shop income is strictly greater than 9000.
+##   Battle condition: any player-side unit's FINAL battle total is strictly greater
+##     than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
 ##     considered. 9000 itself does not fire; 9001 does. The log reports the actual
 ##     total (e.g. "slot 1 monster.name.x poison 9002"), not the threshold.
 
 const SIX_SEVEN_ID := "six_seven"
 const SIX_SEVEN_LIVES := 6
+const SIX_SEVEN_DAY := 7
 const SIX_SEVEN_WINS := 7
 
+const SIX_NINE_ID := "six_nine"
+const SIX_NINE_LIVES := 6
+const SIX_NINE_DAY := 9
+const SIX_NINE_WINS := 9
+
 const FOUR_TWENTY_ID := "four_twenty"
+const FOUR_TWENTY_VALUE := 420
 const SIX_SIX_SIX_ID := "six_six_six"
+const SIX_SIX_SIX_VALUE := 666
 const OVER_9000_ID := "over_9000"
 const OVER_9000_THRESHOLD := 9000
 
@@ -66,10 +80,33 @@ const COMPARISON_GREATER_THAN := "gt"    # total > value
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
-## Run-scoped reaction table: one row per reaction. Add rows here rather than new
-## classes; the condition code stays in _matches().
+## Run-scoped reaction table: one row per reaction. A row matches when:
+## - `lives` matches AND (`day` or `wins` matches), using the shop's
+##   [Lives, Day, Wins] layout, OR
+## - `income` matches, using `income_comparison` (eq by default, gt optional).
+## Add rows here rather than new classes; the condition code stays in _match_detail().
 const REACTIONS := [
-	{"id": SIX_SEVEN_ID, "lives": SIX_SEVEN_LIVES, "wins": SIX_SEVEN_WINS},
+	{
+		"id": SIX_SEVEN_ID,
+		"lives": SIX_SEVEN_LIVES,
+		"day": SIX_SEVEN_DAY,
+		"wins": SIX_SEVEN_WINS,
+		"income": 67,
+	},
+	{
+		"id": SIX_NINE_ID,
+		"lives": SIX_NINE_LIVES,
+		"day": SIX_NINE_DAY,
+		"wins": SIX_NINE_WINS,
+		"income": 69,
+	},
+	{"id": FOUR_TWENTY_ID, "income": FOUR_TWENTY_VALUE},
+	{"id": SIX_SIX_SIX_ID, "income": SIX_SIX_SIX_VALUE},
+	{
+		"id": OVER_9000_ID,
+		"income": OVER_9000_THRESHOLD,
+		"income_comparison": COMPARISON_GREATER_THAN,
+	},
 ]
 
 ## Battle metrics checked against each battle reaction's value, in log order. All are
@@ -93,8 +130,9 @@ const BATTLE_METRICS := [
 ##   metrics     optional list of BATTLE_METRICS keys to consider; default is all six
 const BATTLE_REACTIONS := [
 	{"id": SIX_SEVEN_ID, "value": 67},
-	{"id": FOUR_TWENTY_ID, "value": 420},
-	{"id": SIX_SIX_SIX_ID, "value": 666},
+	{"id": SIX_NINE_ID, "value": 69},
+	{"id": FOUR_TWENTY_ID, "value": FOUR_TWENTY_VALUE},
+	{"id": SIX_SIX_SIX_ID, "value": SIX_SIX_SIX_VALUE},
 	{
 		"id": OVER_9000_ID,
 		"value": OVER_9000_THRESHOLD,
@@ -119,16 +157,11 @@ func poll(run_snapshot: Dictionary) -> Array:
 		var id := str(reaction.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		if not _matches(reaction, run_snapshot):
+		var detail := _match_detail(reaction, run_snapshot)
+		if detail.is_empty():
 			continue
 		_occurrences[id] = 1
-		triggered.append({
-			"id": id,
-			"detail": "Lives %d, Wins %d" % [
-				int(run_snapshot.get("lives")),
-				int(run_snapshot.get("current_wins")),
-			],
-		})
+		triggered.append({"id": id, "detail": detail})
 	return triggered
 
 
@@ -186,14 +219,50 @@ func occurrence_count(id: String) -> int:
 	return int(_occurrences.get(id, 0))
 
 
-## Does the snapshot satisfy this run-scoped reaction's condition? Both fields must be
-## present integers; anything else (absent, null, string, bool) does not match.
-func _matches(reaction: Dictionary, run_snapshot: Dictionary) -> bool:
+## Detail line for a matching run reaction, or "" when nothing matches.
+##
+## The [Lives, Day, Wins] condition and the income condition are independent
+## triggers. Numeric fields must be present integers; anything else (absent, null,
+## string, bool) does not match. When several triggers match at once, every matched
+## label is included in the detail.
+func _match_detail(reaction: Dictionary, run_snapshot: Dictionary) -> String:
+	var parts: PackedStringArray = []
 	var lives = run_snapshot.get("lives")
+	var day = run_snapshot.get("current_round")
 	var wins = run_snapshot.get("current_wins")
-	if typeof(lives) != TYPE_INT or typeof(wins) != TYPE_INT:
-		return false
-	return int(lives) == int(reaction.get("lives")) and int(wins) == int(reaction.get("wins"))
+
+	if reaction.has("lives") and typeof(lives) == TYPE_INT and int(lives) == int(reaction.get("lives")):
+		var lives_added := false
+		if reaction.has("day") and typeof(day) == TYPE_INT and int(day) == int(reaction.get("day")):
+			parts.append("Lives %d" % int(lives))
+			parts.append("Day %d" % int(day))
+			lives_added = true
+		if reaction.has("wins") and typeof(wins) == TYPE_INT and int(wins) == int(reaction.get("wins")):
+			if not lives_added:
+				parts.append("Lives %d" % int(lives))
+			parts.append("Wins %d" % int(wins))
+
+	if reaction.has("income"):
+		var income = run_snapshot.get("income")
+		if typeof(income) == TYPE_INT and _income_matches(reaction, int(income)):
+			parts.append("Income %d" % int(income))
+
+	return ", ".join(parts)
+
+
+## Does the derived shop income satisfy the row's income condition?
+func _income_matches(reaction: Dictionary, income: int) -> bool:
+	var expected := int(reaction.get("income", 0))
+	var comparison := str(reaction.get("income_comparison", COMPARISON_EQUALS))
+	if comparison == COMPARISON_EQUALS:
+		return income == expected
+	if comparison == COMPARISON_GREATER_THAN:
+		return income > expected
+	push_warning("Brain Rot: unknown income reaction comparison '%s' for %s" % [
+		comparison,
+		str(reaction.get("id", "?")),
+	])
+	return false
 
 
 ## Lowest player-side slot with a metric satisfying `reaction`, plus the first matching

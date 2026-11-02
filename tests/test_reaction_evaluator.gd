@@ -3,12 +3,13 @@ extends "test_runner.gd"
 ##
 ## Battle reactions are data-driven: BATTLE_CASES mirrors the evaluator's
 ## BATTLE_REACTIONS table, so every battle test runs the same matrix for each value
-## (67, 420, 666). Adding a value reaction means one row here, not a new test block.
+## (67, 69, 420, 666). Adding a value reaction means one row here, not a new test block.
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const AchievementStore = preload("../achievements/achievement_store.gd")
 
 const SIX_SEVEN := "six_seven"
+const SIX_NINE := "six_nine"
 const FOUR_TWENTY := "four_twenty"
 const SIX_SIX_SIX := "six_six_six"
 const OVER_9000 := "over_9000"
@@ -19,8 +20,17 @@ const RHIZUKA := "monster.name.rhizuka"
 ## One row per battle reaction: id + the exact final total that triggers it.
 const BATTLE_CASES := [
 	{"id": SIX_SEVEN, "value": 67},
+	{"id": SIX_NINE, "value": 69},
 	{"id": FOUR_TWENTY, "value": 420},
 	{"id": SIX_SIX_SIX, "value": 666},
+]
+
+## One row per numeric income reaction: id + the shop income that triggers it.
+const INCOME_CASES := [
+	{"id": SIX_SEVEN, "income": 67},
+	{"id": SIX_NINE, "income": 69},
+	{"id": FOUR_TWENTY, "income": 420},
+	{"id": SIX_SIX_SIX, "income": 666},
 ]
 
 ## Metric key -> log label, in the evaluator's BATTLE_METRICS order.
@@ -38,9 +48,19 @@ func _new_evaluator():
 	return ReactionEvaluator.new()
 
 
-## Run snapshot with the two fields the run reaction reads.
+## Run snapshot with the original lives/wins pair (Day absent).
 func _snap(lives, wins) -> Dictionary:
 	return {"kind": "run", "lives": lives, "current_wins": wins}
+
+
+## Run snapshot with the shop's [Lives, Day, Wins] layout.
+func _snap_layout(lives, day, wins) -> Dictionary:
+	return {"kind": "run", "lives": lives, "current_round": day, "current_wins": wins}
+
+
+## Run snapshot carrying only the derived shop income.
+func _snap_income(income) -> Dictionary:
+	return {"kind": "run", "income": income}
 
 
 func _battle(team: Array, units: Array, battle_over: bool = true) -> Dictionary:
@@ -112,6 +132,97 @@ func test_lives6_wins7_triggers_once() -> void:
 		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
 		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 7")
 	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 1)
+
+
+# --- 1a. shop layout: Lives 6 + Day/Wins 7 or 9 ---
+
+func test_lives6_day7_triggers_six_seven() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll(_snap_layout(6, 7, 0))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
+		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 7")
+
+
+func test_lives6_wins7_triggers_six_seven_with_layout() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll(_snap_layout(6, 1, 7))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
+		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 7")
+
+
+func test_lives6_day9_triggers_six_nine() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll(_snap_layout(6, 9, 0))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SIX_NINE)
+		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 9")
+
+
+func test_lives6_wins9_triggers_six_nine() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll(_snap_layout(6, 1, 9))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SIX_NINE)
+		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 9")
+
+
+func test_lives5_day9_does_not_trigger_six_nine() -> void:
+	assert_empty(_new_evaluator().poll(_snap_layout(5, 9, 0)))
+
+
+# --- 1b. income triggers for every numeric reaction ---
+
+func test_income_values_trigger_each_numeric_reaction() -> void:
+	for case in INCOME_CASES:
+		var income := int(case["income"])
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll(_snap_income(income))
+		var label := str(case["id"])
+		assert_eq(earned.size(), 1, label)
+		if earned.size() == 1:
+			assert_eq(str(earned[0].get("id", "")), label, label)
+			assert_eq(str(earned[0].get("detail", "")), "Income %d" % income, label)
+
+
+func test_income_near_misses_do_not_trigger() -> void:
+	for case in INCOME_CASES:
+		var income := int(case["income"])
+		for delta in [-1, 1]:
+			var evaluator = _new_evaluator()
+			assert_empty(
+				evaluator.poll(_snap_income(income + delta)),
+				"%s %d" % [case["id"], income + delta]
+			)
+
+
+func test_over_9000_income_is_strictly_greater_than_9000() -> void:
+	var evaluator = _new_evaluator()
+	assert_empty(evaluator.poll(_snap_income(9000)))
+	var earned: Array = evaluator.poll(_snap_income(9001))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), OVER_9000)
+		assert_eq(str(earned[0].get("detail", "")), "Income 9001")
+
+
+func test_layout_and_income_combine_detail() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll({
+		"kind": "run",
+		"lives": 6,
+		"current_round": 7,
+		"current_wins": 7,
+		"income": 67,
+	})
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 7, Wins 7, Income 67")
 
 
 # --- 2. near misses do not trigger ---
