@@ -15,7 +15,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.24"
+const VERSION := "0.0.0.25"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
@@ -173,6 +173,10 @@ func _preview_toast(entry: Dictionary) -> void:
 		str(entry.get("kind", "")),
 		str(entry.get("id", "")),
 	])
+	# Keep the preview aligned with gameplay presentation: reaction entries use
+	# the same sound mapping (currently only over_9000 has audio).
+	if str(entry.get("kind", "")) == _toast_catalog_script.KIND_REACTION:
+		_play_reaction_sound(str(entry.get("id", "")))
 	_submit_notification(_toast_catalog_script.make_request(entry))
 
 
