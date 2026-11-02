@@ -22,6 +22,10 @@ extends RefCounted
 ##       "kind": "battle",
 ##       "battle_over": bool,             # only when the simulation data exposes it
 ##       "battle_units": [unit, ...],     # only when the simulation data exposes it
+##       "outcome": {"wins": int, "lives": int},
+##                                        # COMMITTED post-battle totals from the
+##                                        # promoted RunManager.data run; absent
+##                                        # when a safe committed read is not possible
 ##     }
 ##
 ## monster: {"name_key": String, "level": int} with each key present only when the
@@ -41,7 +45,9 @@ extends RefCounted
 ##
 ## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
 ##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench,
-##        _active_passives[].gold_gain (income derivation only)
+##        _active_passives[].gold_gain (income derivation only),
+##        pending_round_start, pending_battle_opponent (promoted-run outcome guards;
+##        verified in BatomonHelperBridge read_battle_outcome)
 ##   monster: data.name_key, level
 ##   battle: simulation.data.battle_over,
 ##           simulation.data.battle_units[].{team_id, slot_index, shield_granted,
@@ -76,10 +82,18 @@ func read_run(run) -> Dictionary:
 ## Snapshot of the run plus the battle simulation fields. Returns {} when the state
 ## is null or invalid. Run fields are omitted when the run is unavailable, so the
 ## battle fields can still be captured.
-func read_battle(state, run) -> Dictionary:
+##
+## replay_run is the battle state's pre-battle template copy (does NOT contain the
+## post-battle win count). committed_run is the promoted RunManager.data run; when
+## its identity and pending state prove it is the same battle's committed result,
+## the snapshot gains an `outcome` with the post-battle wins/lives.
+func read_battle(state, replay_run, committed_run = null) -> Dictionary:
 	if not _is_live(state):
 		return {}
-	var snapshot := _read_run_fields(run, KIND_BATTLE) if _is_live(run) else {"kind": KIND_BATTLE}
+	var snapshot := _read_run_fields(replay_run, KIND_BATTLE) if _is_live(replay_run) else {"kind": KIND_BATTLE}
+	var outcome := _read_outcome(replay_run, committed_run)
+	if not outcome.is_empty():
+		snapshot["outcome"] = outcome
 
 	var sim = state.get("simulation") if _has_prop.call(state, "simulation") else null
 	if not _is_live(sim):
@@ -165,6 +179,42 @@ func _read_monsters(monsters) -> Array:
 				entry["level"] = level
 		out.append(entry)
 	return out
+
+
+## Committed post-battle totals, only when the promoted run is provably the same
+## battle's result. Guards mirror BatomonHelperBridge read_battle_outcome (verified):
+## same run_id and round, pending_round_start true, no pending battle opponent.
+## The replay template copy and the promoted run are never the same instance.
+## Returns {} when any guard fails or wins/lives are not numeric.
+func _read_outcome(replay_run, committed_run) -> Dictionary:
+	if not _is_live(replay_run) or not _is_live(committed_run):
+		return {}
+	if replay_run == committed_run:
+		return {}
+
+	if _has_prop.call(replay_run, "run_id") and _has_prop.call(committed_run, "run_id"):
+		if str(replay_run.get("run_id")) != str(committed_run.get("run_id")):
+			return {}
+
+	var replay_round = _read_int(replay_run, "current_round")
+	var committed_round = _read_int(committed_run, "current_round")
+	if replay_round != null and committed_round != null and replay_round != committed_round:
+		return {}
+
+	if _has_prop.call(committed_run, "pending_round_start") and not bool(committed_run.get("pending_round_start")):
+		return {}
+	if _has_prop.call(committed_run, "pending_battle_opponent"):
+		var opponent = committed_run.get("pending_battle_opponent")
+		if opponent is Dictionary and not opponent.is_empty():
+			return {}
+		if opponent is Array and not opponent.is_empty():
+			return {}
+
+	var wins = _read_int(committed_run, "current_wins")
+	var lives = _read_int(committed_run, "lives")
+	if wins == null or lives == null:
+		return {}
+	return {"wins": wins, "lives": lives}
 
 
 func _read_battle_units(units) -> Array:

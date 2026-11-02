@@ -74,14 +74,17 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
   - Run details are built from whichever triggers matched (`Lives 6, Day 7`, `Lives 6, Wins 7`, `Income 67`, or comma-joined when several match).
 - **six_nine** is the same shape for Day 9 / Wins 9 / income 69, plus battle total 69. Title: `6 9`.
 - **four_twenty** (420) and **six_six_six** (666): income equals the value (run-scoped) OR any player-side unit's **final** battle total equals the value on damage, heal, shield, burn, poison, or shock. Battle timing, lowest-slot, and first-metric rules match six_seven. Logs `Income 420` / `Income 666` or the battle detail.
-- **over_9000**: income is **strictly greater than 9000** (run-scoped) OR any player-side unit's **final** battle total is **strictly greater than 9000** on **burn, poison, or shock only**. 9000 itself does not fire; 9001 does. The log reports the **actual total**, not the threshold. It also plays `assets/sounds/over-9000.ogg` through `audio/ui_sound.gd`. The dev toast preview calls the same sound mapping, so previewing `It's Over 9000!` plays it too.
+- **over_9000**: income is **strictly greater than 9000** (run-scoped) OR any player-side unit's **final** battle total is **strictly greater than 9000** on **burn, poison, or shock only**. 9000 itself does not fire; 9001 does. The log reports the **actual total**, not the threshold. It also plays `assets/sounds/over-9000.ogg`.
+- **flawless_victory**: at `battle_over`, the **committed** post-battle run has **Wins == 10** and **Lives == 10**. Reads the battle snapshot's `outcome` (the promoted `RunManager.data` run, guarded by run identity + pending state), NOT the pre-battle replay copy. Fires once per run; `reset_battle()` does not re-arm it. Plays `assets/sounds/ff_fanfare.ogg`. Title: `Flawless Victory`.
 - During battle the player's run is read from `battle_state._replay_p1_data` (verified in MyBattleStats/BatoEyes and BatomonHelperBridge), falling back to `RunManager.data`, which may already be the promoted/completed run.
 - Run-scoped reactions trigger once per run, on the first matching snapshot. Repeated polls, leaving and returning, and a menu round-trip (run unavailable) do not retrigger. Only a verified run transition calls `reset_run()`.
 - Battle reactions fire at most **once per battle per reaction id**, even when several units qualify: the lowest slot wins, and within that slot the first metric in `BATTLE_METRICS` order (damage, heal, shield, burn, poison, shock). `reset_battle()` runs when a new battle starts. They are checked once, on the completed battle's final totals, so mid-fight values never match.
 - Run rows live in `REACTIONS` and may carry `lives` with `day`/`wins` (layout) and/or `income` plus optional `income_comparison`. Battle rows live in `BATTLE_REACTIONS`: `{"id", "value"}` for exact matches, plus optional `"comparison": "gt"` and `"metrics": [keys]`. Adding a value reaction is one row plus an id const. `tests/test_reaction_evaluator.gd` mirrors the exact-value rows in `BATTLE_CASES`, so every battle test runs the full matrix for each value; threshold reactions have their own block.
 - **Limitation:** occurrence tracking is session-only. Restarting the game or the mod can allow a reaction again within a continuing run.
 - **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `RUN PROGRESS | Day N, Lives L, Wins W` on every change to verify them.
-- `reaction_player.gd` logs (console and `inspect.log`), submits a toast through the shared notification host, and forwards the reaction id to an optional sound sink. `mod_main` maps `over_9000` to the sound player; other reactions stay silent.
+- `reaction_player.gd` logs (console and `inspect.log`), submits a toast through the shared notification host, and forwards the reaction id to an optional sound sink.
+- Reaction audio is table-driven in `audio/reaction_sounds.gd` (`REACTION_SOUNDS`). Adding a sound is one row plus the OGG in `assets/sounds/`; `mod_main` and the dev preview both call `play_for(id)`, so they cannot drift.
+- The dev toast preview calls the same sound mapping, so previewing a sound reaction plays it too.
 
 ## UI Sizing and Theme Overrides
 Godot's default control theme is sized for menus, not the mod's compact toast/HUD
@@ -130,12 +133,13 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, and toast layout metrics. |
 | `hud/toast_preview_panel.gd` | Dev-only preview button/panel: compact dropdown of registered toasts, Play, and Close. |
 | `notifications/toast_catalog.gd` | Builds preview entries from the achievement/reaction registries and duplicate-allowed requests. |
-| `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts; currently plays `assets/sounds/over-9000.ogg`. |
+| `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
+| `audio/reaction_sounds.gd` | Table-driven reaction audio (`REACTION_SOUNDS`); one row per reaction, lazy per-file players. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
 | `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast, and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |

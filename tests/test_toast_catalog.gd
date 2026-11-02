@@ -39,17 +39,24 @@ func test_entries_include_every_registered_achievement() -> void:
 func test_entries_include_every_registered_reaction_once() -> void:
 	var entries := ToastCatalog.entries()
 	var expected_ids := {}
-	for reaction in ReactionEvaluator.REACTIONS:
-		expected_ids[str(reaction.get("id", ""))] = true
-	for reaction in ReactionEvaluator.BATTLE_REACTIONS:
-		expected_ids[str(reaction.get("id", ""))] = true
+	for registered in ReactionEvaluator.registered_rows():
+		expected_ids[str(registered["row"].get("id", ""))] = true
 
 	for id in expected_ids:
 		var found := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, id)
 		assert_false(found.is_empty(), "missing reaction " + id)
+		assert_false(str(found.get("title", "")).is_empty(), "missing title for " + id)
 
 	var reactions := _reaction_entries(entries)
 	assert_eq(reactions.size(), expected_ids.size(), "reaction ids must not duplicate")
+
+
+func test_flawless_victory_preview_uses_committed_totals() -> void:
+	var entries := ToastCatalog.entries()
+	var found := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, "flawless_victory")
+	assert_false(found.is_empty(), "flawless_victory must be in the catalog")
+	assert_eq(str(found.get("title", "")), "Flawless Victory")
+	assert_eq(str(found.get("description", "")), "Wins 10, Lives 10")
 
 
 func test_every_entry_has_a_non_empty_label_and_title() -> void:

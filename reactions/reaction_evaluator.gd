@@ -56,6 +56,11 @@ extends RefCounted
 ##     than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
 ##     considered. 9000 itself does not fire; 9001 does. The log reports the actual
 ##     total (e.g. "slot 1 monster.name.x poison 9002"), not the threshold.
+## - "flawless_victory"
+##   Battle-outcome condition: evaluated only at battle_over from the battle
+##     snapshot's `outcome` (the COMMITTED promoted-run totals, not the pre-battle
+##     replay copy): Wins == 10 AND Lives == 10. Fires once per run; reset_run()
+##     re-arms it, reset_battle() does not.
 
 const SIX_SEVEN_ID := "six_seven"
 const SIX_SEVEN_LIVES := 6
@@ -74,9 +79,18 @@ const SIX_SIX_SIX_VALUE := 666
 const OVER_9000_ID := "over_9000"
 const OVER_9000_THRESHOLD := 9000
 
+const FLAWLESS_VICTORY_ID := "flawless_victory"
+const FLAWLESS_VICTORY_WINS := 10
+const FLAWLESS_VICTORY_LIVES := 10
+
 # How a battle reaction compares a unit's total to its `value`.
 const COMPARISON_EQUALS := "eq"          # total == value
 const COMPARISON_GREATER_THAN := "gt"    # total > value
+
+# Evaluation scope labels for registered_rows() (dev tooling / catalog).
+const SCOPE_RUN := "run"
+const SCOPE_BATTLE := "battle"
+const SCOPE_OUTCOME := "outcome"
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
@@ -141,6 +155,27 @@ const BATTLE_REACTIONS := [
 	},
 ]
 
+## Battle-outcome reaction table: evaluated from the committed post-battle run,
+## only at battle_over. Rows: {"id", "wins", "lives"} exact values.
+## These are run-scoped occurrences (once per run), unlike BATTLE_REACTIONS
+## (once per battle).
+const BATTLE_OUTCOME_REACTIONS := [
+	{"id": FLAWLESS_VICTORY_ID, "wins": FLAWLESS_VICTORY_WINS, "lives": FLAWLESS_VICTORY_LIVES},
+]
+
+
+## Every registered reaction row with its evaluation scope. Dev tooling and schema
+## tests iterate this so a new table or row cannot be forgotten.
+static func registered_rows() -> Array:
+	var rows: Array = []
+	for reaction in REACTIONS:
+		rows.append({"scope": SCOPE_RUN, "row": reaction})
+	for reaction in BATTLE_REACTIONS:
+		rows.append({"scope": SCOPE_BATTLE, "row": reaction})
+	for reaction in BATTLE_OUTCOME_REACTIONS:
+		rows.append({"scope": SCOPE_OUTCOME, "row": reaction})
+	return rows
+
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
 var _occurrences: Dictionary = {}
 # Battle-scoped: reaction ids that already fired for the current battle.
@@ -177,6 +212,7 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 
 	var units = battle_snapshot.get("battle_units")
 	if not units is Array:
+		_poll_battle_outcomes(triggered, battle_snapshot)
 		return triggered
 	var team = battle_snapshot.get("team")
 	if not team is Array:
@@ -200,7 +236,32 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 				int(found.get("value", 0)),
 			],
 		})
+	_poll_battle_outcomes(triggered, battle_snapshot)
 	return triggered
+
+
+## Append outcome-based reactions from the committed post-battle totals. Requires
+## battle_over (poll_battle already checked) and integer wins/lives. Occurrence is
+## run-scoped, so the same run cannot fire it twice and reset_battle() keeps it armed.
+func _poll_battle_outcomes(triggered: Array, battle_snapshot: Dictionary) -> void:
+	var outcome = battle_snapshot.get("outcome")
+	if not outcome is Dictionary:
+		return
+	var wins = outcome.get("wins")
+	var lives = outcome.get("lives")
+	if typeof(wins) != TYPE_INT or typeof(lives) != TYPE_INT:
+		return
+	for reaction in BATTLE_OUTCOME_REACTIONS:
+		var id := str(reaction.get("id", ""))
+		if id.is_empty() or _occurrences.has(id):
+			continue
+		if int(wins) != int(reaction.get("wins")) or int(lives) != int(reaction.get("lives")):
+			continue
+		_occurrences[id] = 1
+		triggered.append({
+			"id": id,
+			"detail": "Wins %d, Lives %d" % [int(wins), int(lives)],
+		})
 
 
 ## Clear all tracking. Call at a verified run transition.

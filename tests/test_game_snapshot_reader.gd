@@ -363,3 +363,84 @@ func test_usable_false_without_battle_units() -> void:
 	assert_false(reader.is_battle_snapshot_usable(snapshot))
 
 
+# --- read_battle: committed outcome (promoted run) ---
+
+func _replay(overrides: Dictionary = {}):
+	var base := {"run_id": "run-1", "current_round": 5, "current_wins": 9, "lives": 10}
+	base.merge(overrides, true)
+	return TestHelpers.FakeObject.new(base)
+
+
+func _committed(overrides: Dictionary = {}):
+	var base := {
+		"run_id": "run-1",
+		"current_round": 5,
+		"current_wins": 10,
+		"lives": 10,
+		"pending_round_start": true,
+		"pending_battle_opponent": [],
+	}
+	base.merge(overrides, true)
+	return TestHelpers.FakeObject.new(base)
+
+
+func test_read_battle_includes_committed_outcome_when_guards_pass() -> void:
+	var snapshot: Dictionary = _new_reader().read_battle(
+		TestHelpers.FakeObject.new({}), _replay(), _committed()
+	)
+	assert_eq(snapshot.get("outcome"), {"wins": 10, "lives": 10})
+
+
+func test_read_battle_outcome_absent_without_committed_run() -> void:
+	var snapshot: Dictionary = _new_reader().read_battle(
+		TestHelpers.FakeObject.new({}), _replay()
+	)
+	assert_false(snapshot.has("outcome"))
+
+
+func test_read_battle_outcome_absent_for_same_instance() -> void:
+	var replay = _replay()
+	var snapshot: Dictionary = _new_reader().read_battle(
+		TestHelpers.FakeObject.new({}), replay, replay
+	)
+	assert_false(snapshot.has("outcome"))
+
+
+func test_read_battle_outcome_absent_on_run_identity_mismatch() -> void:
+	var state = TestHelpers.FakeObject.new({})
+	var snapshot: Dictionary = _new_reader().read_battle(
+		state, _replay(), _committed({"run_id": "run-2"})
+	)
+	assert_false(snapshot.has("outcome"), "run_id mismatch")
+	snapshot = _new_reader().read_battle(
+		state, _replay(), _committed({"current_round": 6})
+	)
+	assert_false(snapshot.has("outcome"), "round mismatch")
+
+
+func test_read_battle_outcome_absent_when_round_not_pending() -> void:
+	var snapshot: Dictionary = _new_reader().read_battle(
+		TestHelpers.FakeObject.new({}), _replay(), _committed({"pending_round_start": false})
+	)
+	assert_false(snapshot.has("outcome"))
+
+
+func test_read_battle_outcome_absent_with_pending_opponent() -> void:
+	var snapshot: Dictionary = _new_reader().read_battle(
+		TestHelpers.FakeObject.new({}), _replay(), _committed({"pending_battle_opponent": [{"id": "x"}]})
+	)
+	assert_false(snapshot.has("outcome"))
+
+
+func test_read_battle_outcome_absent_for_non_numeric_totals() -> void:
+	var state = TestHelpers.FakeObject.new({})
+	var snapshot: Dictionary = _new_reader().read_battle(
+		state, _replay(), _committed({"current_wins": "10"})
+	)
+	assert_false(snapshot.has("outcome"), "string wins")
+	snapshot = _new_reader().read_battle(
+		state, _replay(), _committed({"lives": null})
+	)
+	assert_false(snapshot.has("outcome"), "null lives")
+
+

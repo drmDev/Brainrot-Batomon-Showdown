@@ -10,8 +10,6 @@ extends Control
 ## labels and especially the OptionButton popup need explicit font-size and compact
 ## stylebox overrides (same approach as Creature Comforts' HUD panels).
 
-signal entry_played(entry)
-
 const Styles = preload("styles.gd")
 
 const BUTTON_WIDTH := 38.0
@@ -34,11 +32,9 @@ var _entries: Array = []
 var _play_fn: Callable
 var _font: Font
 
-var _open_button: Button
 var _panel: PanelContainer
 var _option: OptionButton
 var _play_button: Button
-var _close_button: Button
 
 
 ## entries: ToastCatalog.entries(). play_fn: receives the selected entry Dictionary.
@@ -55,22 +51,22 @@ func _init(entries: Array = [], play_fn: Callable = Callable()) -> void:
 
 
 func _build_ui() -> void:
-	_open_button = Button.new()
-	_open_button.name = "PreviewButton"
-	_open_button.text = "Preview"
-	_open_button.focus_mode = Control.FOCUS_NONE
-	_open_button.tooltip_text = "Preview an achievement or reaction toast"
-	_open_button.anchor_left = 1.0
-	_open_button.anchor_right = 1.0
-	_open_button.anchor_top = BUTTON_TOP_RATIO
-	_open_button.anchor_bottom = BUTTON_TOP_RATIO
-	_open_button.offset_left = -MARGIN - BUTTON_WIDTH
-	_open_button.offset_top = 0.0
-	_open_button.offset_right = -MARGIN
-	_open_button.offset_bottom = BUTTON_HEIGHT
-	_apply_compact_control(_open_button, BODY_FONT_SIZE)
-	_open_button.pressed.connect(open_panel)
-	add_child(_open_button)
+	var open_button := Button.new()
+	open_button.name = "PreviewButton"
+	open_button.text = "Preview"
+	open_button.focus_mode = Control.FOCUS_NONE
+	open_button.tooltip_text = "Preview an achievement or reaction toast"
+	open_button.anchor_left = 1.0
+	open_button.anchor_right = 1.0
+	open_button.anchor_top = BUTTON_TOP_RATIO
+	open_button.anchor_bottom = BUTTON_TOP_RATIO
+	open_button.offset_left = -MARGIN - BUTTON_WIDTH
+	open_button.offset_top = 0.0
+	open_button.offset_right = -MARGIN
+	open_button.offset_bottom = BUTTON_HEIGHT
+	_apply_compact_control(open_button, BODY_FONT_SIZE)
+	open_button.pressed.connect(open_panel)
+	add_child(open_button)
 
 	_panel = PanelContainer.new()
 	_panel.name = "PreviewPanel"
@@ -114,9 +110,9 @@ func _build_ui() -> void:
 	_play_button.pressed.connect(play_selected)
 	buttons.add_child(_play_button)
 
-	_close_button = _make_button("CloseButton", "Close", BODY_FONT_SIZE)
-	_close_button.pressed.connect(close_panel)
-	buttons.add_child(_close_button)
+	var close_button := _make_button("CloseButton", "Close", BODY_FONT_SIZE)
+	close_button.pressed.connect(close_panel)
+	buttons.add_child(close_button)
 
 	add_child(_panel)
 
@@ -212,4 +208,3 @@ func play_selected() -> void:
 		return
 	if _play_fn.is_valid():
 		_play_fn.call(entry)
-	entry_played.emit(entry)

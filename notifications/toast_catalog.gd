@@ -36,10 +36,8 @@ static func entries() -> Array:
 		})
 
 	var seen := {}
-	for reaction in ReactionEvaluator.REACTIONS:
-		_append_reaction(out, seen, reaction, true)
-	for reaction in ReactionEvaluator.BATTLE_REACTIONS:
-		_append_reaction(out, seen, reaction, false)
+	for entry in ReactionEvaluator.registered_rows():
+		_append_reaction(out, seen, entry["row"], str(entry["scope"]))
 
 	return out
 
@@ -69,7 +67,7 @@ static func find(all_entries: Array, kind: String, id: String) -> Dictionary:
 
 
 ## Append one reaction entry unless its id was already registered.
-static func _append_reaction(out: Array, seen: Dictionary, reaction, run_scoped: bool) -> void:
+static func _append_reaction(out: Array, seen: Dictionary, reaction, scope: String) -> void:
 	var id := str(reaction.get("id", ""))
 	if id.is_empty() or seen.has(id):
 		return
@@ -80,14 +78,15 @@ static func _append_reaction(out: Array, seen: Dictionary, reaction, run_scoped:
 		"id": id,
 		"label": "Reaction - %s" % title,
 		"title": title,
-		"description": _reaction_description(reaction, run_scoped),
+		"description": _reaction_description(reaction, scope),
 	})
 
 
 ## Representative detail text for a reaction preview. Run reactions mirror the
-## [Lives, Day, Wins] / income triggers; battle reactions show the threshold.
-static func _reaction_description(reaction: Dictionary, run_scoped: bool) -> String:
-	if run_scoped:
+## [Lives, Day, Wins] / income triggers; outcome reactions show their final totals;
+## battle reactions show the threshold.
+static func _reaction_description(reaction: Dictionary, scope: String) -> String:
+	if scope == ReactionEvaluator.SCOPE_RUN:
 		var parts: PackedStringArray = []
 		if reaction.has("lives"):
 			parts.append("Lives %d" % int(reaction.get("lives")))
@@ -101,6 +100,11 @@ static func _reaction_description(reaction: Dictionary, run_scoped: bool) -> Str
 			else:
 				parts.append("Income %d" % int(reaction.get("income")))
 		return ", ".join(parts)
+	if scope == ReactionEvaluator.SCOPE_OUTCOME:
+		return "Wins %d, Lives %d" % [
+			int(reaction.get("wins", 0)),
+			int(reaction.get("lives", 0)),
+		]
 	var value := int(reaction.get("value", 0))
 	if str(reaction.get("comparison", ReactionEvaluator.COMPARISON_EQUALS)) == ReactionEvaluator.COMPARISON_GREATER_THAN:
 		return "Battle total > %d" % value

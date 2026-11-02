@@ -22,16 +22,23 @@ var _host: Node
 var _path := ""
 var _player_name := ""
 var _enabled: Callable
+var _volume_db := VOLUME_DB
 var _stream: AudioStream
 var _player: AudioStreamPlayer
 var _load_attempted := false
 
 
-func setup(host: Node, file_name: String, enabled: Callable = Callable()) -> void:
+func setup(
+	host: Node,
+	file_name: String,
+	enabled: Callable = Callable(),
+	volume_db: float = VOLUME_DB
+) -> void:
 	_host = host
 	_path = _resolve_path(file_name)
 	_player_name = PLAYER_PREFIX + file_name.get_basename()
 	_enabled = enabled
+	_volume_db = volume_db
 
 
 func play() -> void:
@@ -46,7 +53,7 @@ func play() -> void:
 		if not (_player is AudioStreamPlayer):
 			_player = AudioStreamPlayer.new()
 			_player.name = _player_name
-			_player.volume_db = VOLUME_DB
+			_player.volume_db = _volume_db
 			_host.add_child(_player)
 	if _player.stream == null:
 		_player.stream = _load_stream()

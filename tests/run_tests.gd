@@ -12,6 +12,7 @@ var _test_scripts := {
 	"achievements_schema": preload("test_achievements_schema.gd"),
 	"dev_config": preload("test_dev_config.gd"),
 	"mod_main_preview": preload("test_mod_main_preview.gd"),
+	"reaction_sounds": preload("test_reaction_sounds.gd"),
 	"ui_sound": preload("test_ui_sound.gd"),
 	"fixture_replay": preload("test_fixture_replay.gd"),
 	"game_snapshot_reader": preload("test_game_snapshot_reader.gd"),

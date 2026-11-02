@@ -15,7 +15,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.25"
+const VERSION := "0.0.0.27"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
@@ -46,7 +46,7 @@ var _toast_preview_panel = null
 # Reactions: snapshot-driven conditions that log, submit toasts, and play sounds.
 var _reaction_evaluator = null
 var _reaction_player = null
-var _over_9000_sound = null
+var _reaction_sounds = null
 var _last_progress_signature := ""
 
 var _next_poll := 0
@@ -129,21 +129,20 @@ func _setup_reactions() -> void:
 	var ReactionEvaluator = load(base_dir.path_join("reactions/reaction_evaluator.gd"))
 	_reaction_evaluator = ReactionEvaluator.new()
 
-	var UiSound = load(base_dir.path_join("audio/ui_sound.gd"))
-	if UiSound != null:
-		_over_9000_sound = UiSound.new()
-		_over_9000_sound.setup(self, "over-9000.ogg")
+	var ReactionSounds = load(base_dir.path_join("audio/reaction_sounds.gd"))
+	if ReactionSounds != null:
+		_reaction_sounds = ReactionSounds.new(self)
 
 	# Reactions log, submit to the shared toast queue, and forward their id to the
-	# sound sink (only over_9000 currently has a sound).
+	# table-driven sound sink.
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
 	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification, _play_reaction_sound)
 
 
-## Play the extra audio for reactions that have one.
+## Play the extra audio for a reaction, if the table has one.
 func _play_reaction_sound(id: String) -> void:
-	if id == "over_9000" and _over_9000_sound != null:
-		_over_9000_sound.play()
+	if _reaction_sounds != null:
+		_reaction_sounds.play_for(id)
 
 
 ## Developer-only toast preview. Disabled unless dev/dev_config.gd says otherwise,
@@ -174,7 +173,7 @@ func _preview_toast(entry: Dictionary) -> void:
 		str(entry.get("id", "")),
 	])
 	# Keep the preview aligned with gameplay presentation: reaction entries use
-	# the same sound mapping (currently only over_9000 has audio).
+	# the same table-driven sound mapping.
 	if str(entry.get("kind", "")) == _toast_catalog_script.KIND_REACTION:
 		_play_reaction_sound(str(entry.get("id", "")))
 	_submit_notification(_toast_catalog_script.make_request(entry))
@@ -257,10 +256,18 @@ func _inspect_current_phase() -> void:
 			# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
 			# RunManager.data may already be the promoted/completed run.
 			var player_run = _get_battle_player_run(state, run)
-			battle_snapshot = _snapshot_reader.read_battle(state, player_run)
+			battle_snapshot = _snapshot_reader.read_battle(state, player_run, run)
 			var usable: bool = _snapshot_reader.is_battle_snapshot_usable(battle_snapshot)
-			_log_event("BATTLE COMPLETE | usable=%s units=%s team=%s trainer=%s" % [
+			var outcome = battle_snapshot.get("outcome")
+			var outcome_text := "absent"
+			if outcome is Dictionary:
+				outcome_text = "wins=%s lives=%s" % [
+					str(outcome.get("wins", "?")),
+					str(outcome.get("lives", "?")),
+				]
+			_log_event("BATTLE COMPLETE | usable=%s outcome=%s units=%s team=%s trainer=%s" % [
 				str(usable),
+				outcome_text,
 				str(battle_snapshot.get("battle_units").size()) if battle_snapshot.get("battle_units") is Array else "absent",
 				str(battle_snapshot.get("team").size()) if battle_snapshot.get("team") is Array else "absent",
 				str(battle_snapshot.get("trainer_id", "absent")),

@@ -13,6 +13,7 @@ const SIX_NINE := "six_nine"
 const FOUR_TWENTY := "four_twenty"
 const SIX_SIX_SIX := "six_six_six"
 const OVER_9000 := "over_9000"
+const FLAWLESS_VICTORY := "flawless_victory"
 
 const CINNABARK := "monster.name.cinnabark"
 const RHIZUKA := "monster.name.rhizuka"
@@ -719,3 +720,105 @@ func test_achievement_completion_does_not_suppress_reaction() -> void:
 	var evaluator = _new_evaluator()
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 	_cleanup(dir)
+
+
+# --- 10. flawless_victory: committed post-battle wins/lives ---
+
+func _battle_outcome(
+	wins,
+	lives,
+	battle_over: bool = true,
+	units: Array = [],
+	team: Array = []
+) -> Dictionary:
+	return {
+		"kind": "battle",
+		"team": team,
+		"battle_units": units,
+		"battle_over": battle_over,
+		"outcome": {"wins": wins, "lives": lives},
+	}
+
+
+func test_flawless_victory_triggers_at_ten_wins_and_ten_lives() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 10))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), FLAWLESS_VICTORY)
+		assert_eq(str(earned[0].get("detail", "")), "Wins 10, Lives 10")
+	assert_eq(evaluator.occurrence_count(FLAWLESS_VICTORY), 1)
+
+
+func test_flawless_victory_near_misses_do_not_trigger() -> void:
+	for pair in [[9, 10], [11, 10], [10, 9], [10, 11]]:
+		assert_empty(
+			_new_evaluator().poll_battle(_battle_outcome(pair[0], pair[1])),
+			"%d/%d" % [pair[0], pair[1]]
+		)
+
+
+func test_flawless_victory_requires_a_valid_committed_outcome() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle([], [], true)))
+	for outcome in [
+		{"wins": "10", "lives": 10},
+		{"wins": 10, "lives": "10"},
+		{"wins": 10.0, "lives": 10},
+		{"wins": 10, "lives": null},
+		{"wins": true, "lives": 10},
+	]:
+		var snapshot := _battle([], [], true)
+		snapshot["outcome"] = outcome
+		assert_empty(_new_evaluator().poll_battle(snapshot), str(outcome))
+
+
+func test_flawless_victory_only_evaluated_at_battle_over() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle_outcome(10, 10, false)))
+	var snapshot := _battle_outcome(10, 10)
+	snapshot.erase("battle_over")
+	assert_empty(_new_evaluator().poll_battle(snapshot))
+
+
+func test_flawless_victory_is_once_per_run_not_per_battle() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle_outcome(10, 10)
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	assert_empty(evaluator.poll_battle(snapshot))
+	evaluator.reset_battle()
+	assert_empty(evaluator.poll_battle(snapshot), "reset_battle must not re-arm a run occurrence")
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_flawless_victory_does_not_require_battle_units() -> void:
+	var snapshot := _battle_outcome(10, 10)
+	snapshot.erase("battle_units")
+	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
+	snapshot["battle_units"] = "not-an-array"
+	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
+
+
+func test_flawless_victory_does_not_trigger_on_run_snapshot() -> void:
+	assert_empty(_new_evaluator().poll({
+		"kind": "run",
+		"lives": 10,
+		"current_wins": 10,
+		"current_round": 10,
+	}))
+
+
+func test_flawless_victory_coexists_with_unit_reactions() -> void:
+	var earned: Array = _new_evaluator().poll_battle(_battle_outcome(
+		10, 10, true, [_unit(0, {"damage_dealt": 67})], _team_one()
+	))
+	var ids := _ids(earned)
+	assert_true(ids.has(SIX_SEVEN))
+	assert_true(ids.has(FLAWLESS_VICTORY))
+
+
+func test_registered_rows_include_the_outcome_scope() -> void:
+	var found := false
+	for entry in ReactionEvaluator.registered_rows():
+		if str(entry["scope"]) == ReactionEvaluator.SCOPE_OUTCOME and str(entry["row"].get("id", "")) == FLAWLESS_VICTORY:
+			found = true
+	assert_true(found)

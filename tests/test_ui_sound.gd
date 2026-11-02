@@ -48,3 +48,11 @@ func test_over_9000_sound_resolves_and_loads() -> void:
 	assert_true(FileAccess.file_exists(sound._path), "sound not found: " + sound._path)
 	assert_true(sound._load_stream() != null, "cannot load: " + sound._path)
 	host.free()
+
+
+func test_setup_stores_a_custom_volume() -> void:
+	var host := Node.new()
+	var sound = UiSound.new()
+	sound.setup(host, "over-9000.ogg", Callable(), -12.0)
+	assert_eq(sound._volume_db, -12.0)
+	host.free()

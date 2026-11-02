@@ -18,6 +18,7 @@ const REACTION_TITLES := {
 	"four_twenty": "Blaze It",
 	"six_six_six": "Number of the Beast",
 	"over_9000": "It's Over 9000!",
+	"flawless_victory": "Flawless Victory",
 }
 
 var _log_fn: Callable
