@@ -27,6 +27,7 @@ Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalon
 - Be concise and direct.
 - Assume I am an experienced software developer.
 - When changes are complete, summarize what changed, what to test, and any remaining concerns.
+- Do not exhaustively update this document with each and every achievement and reaction in the mod. Keep this scoped to understanding this repo itself.
 
 ## Logging
 Logging mirrors Creature Comforts (same helpers, different path). `mod_main.gd` keeps one append handle open for the session and writes to:
