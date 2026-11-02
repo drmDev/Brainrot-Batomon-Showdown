@@ -46,3 +46,16 @@ static func make_panel_style() -> StyleBoxFlat:
 	style.set_border_width_all(PANEL_BORDER_WIDTH)
 	style.set_corner_radius_all(PANEL_CORNER_RADIUS)
 	return style
+
+
+## Compact button chrome for tool UI (dev toast preview). Godot's default Button
+## content margins dominate a tiny font, so these controls need an explicit
+## compact stylebox (mirrors Creature Comforts' HUD helpers).
+static func make_compact_button_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = BG_COLOR
+	style.border_color = BORDER_COLOR
+	style.set_border_width_all(PANEL_BORDER_WIDTH)
+	style.set_corner_radius_all(PANEL_CORNER_RADIUS)
+	style.set_content_margin_all(1.0)
+	return style

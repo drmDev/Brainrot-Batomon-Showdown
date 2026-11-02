@@ -78,6 +78,41 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
 - **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `RUN PROGRESS | Day N, Lives L, Wins W` on every change to verify them.
 - `reaction_player.gd` logs (console and `inspect.log`) and submits a toast through the shared notification host; it remains the future audio/visual integration point.
 
+## UI Sizing and Theme Overrides
+Godot's default control theme is sized for menus, not the mod's compact toast/HUD
+scale. Native `Label`, `Button`, and `OptionButton` controls render with large
+fonts, padding, and popup rows unless every control is overridden explicitly.
+This bit the dev toast preview: without overrides, the dropdown popup and button
+labels were several times larger than the surrounding toast UI.
+
+Rules for compact HUD/tool UI:
+
+- Set the font and size on every control, not just its parent:
+  `add_theme_font_override("font", font)` and
+  `add_theme_font_size_override("font_size", size)` (build the font with
+  `hud/styles.gd`'s `make_font()`).
+- `OptionButton`'s dropdown is a separate `PopupMenu`, so override it too:
+  `var popup := option.get_popup()`, then set `font`, `font_size`, and optionally
+  `v_separation` to `0`. Skipping this leaves dropdown rows at Godot's default
+  large size even when the button face itself is small.
+- Godot's default button stylebox content margins dominate a tiny font. Override
+  `normal`, `hover`, `pressed`, `focus`, and `disabled` with
+  `Styles.make_compact_button_style()` (navy/gold chrome, 1 px content margin)
+  and set a matching `custom_minimum_size.y`.
+- Size the surrounding panel explicitly and halve its padding/gaps in step with
+  the text (`MarginContainer` margins, `VBoxContainer` separation). Otherwise
+  default spacing keeps the panel oversized after the fonts shrink.
+- Place viewport-relative controls with anchors rather than fixed offsets. The
+  preview button sets `anchor_top = anchor_bottom = 0.20` so it stays 20% down
+  the viewport at any resolution.
+- Keep these controls presentation-only. `hud/toast_preview_panel.gd` forwards
+  the selected catalog entry to `mod_main._preview_toast()` and never touches
+  achievement progress, saves, or game state.
+
+This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
+(`hud/comfort_panel.gd` `_build_hud_box()` and `hud/watchlist_panel.gd`
+`_apply_font()` plus its `OptionButton` popup overrides).
+
 ## Files
 | File | Responsibility |
 |---|---|
@@ -87,12 +122,15 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
 | `achievements/achievement_evaluator.gd` | Rules only: `poll(run_snapshot)`, `poll_battle(battle_snapshot)`, `reset_run()`; returns structured achievements without persistence or UI side effects. |
 | `achievements/achievement_store.gd` | JSON persistence for completion at the mod root (`achievements.json`); tolerates missing or corrupt files. |
 | `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. |
-| `hud/styles.gd` | Shared palette, font, panel chrome, and toast layout metrics. |
+| `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, and toast layout metrics. |
+| `hud/toast_preview_panel.gd` | Dev-only preview button/panel: compact dropdown of registered toasts, Play, and Close. |
+| `notifications/toast_catalog.gd` | Builds preview entries from the achievement/reaction registries and duplicate-allowed requests. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
 | `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, and submits a toast. Future audio/visual integration point. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`. |
+| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`. |
+| `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
 | `dev/fixtures/` | Curated/captured run and battle snapshots replayed by `test_fixture_replay.gd`. |
@@ -123,6 +161,7 @@ them by path:
 - Call `reset_run()` at verified run transitions (inferred in `mod_main` from `run_id`, then run object instance, trainer, and day regression). `run_id` is the primary identity: the game promotes `RunManager.data` to a new RunData object when a battle starts, so instance comparison alone fires a false reset at every battle. An unavailable run does not clear tracking; the comparison on return detects a new run.
 - Reactions must not read the achievement store or depend on achievement completion.
 - Toasts are always on.
+- Compact UI needs explicit font, stylebox, and popup overrides; see **UI Sizing and Theme Overrides**. Do not rely on Godot's default theme for HUD/tool controls.
 - Retain the 500 ms polling interval unless measurements justify changing it.
 - Tests must stay deterministic: inject `TestHelpers.TestClock` instead of relying on wall-clock time.
 - When adding an achievement, add it to `test_achievement_ids_unique_and_well_formed` and the branch matrix in `dev/QUALITY.md`.
@@ -139,7 +178,7 @@ The check scripts live in `dev/` and already point at the Godot console binary
 # 1. Parse-check every .gd file (mod_main.gd, achievements/, hud/, tests/, ...)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\gd_checks.ps1
 
-# 2. Run the headless unit-test suite (all 9 suites)
+# 2. Run the headless unit-test suite (all suites)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\run_tests.ps1
 ```
 

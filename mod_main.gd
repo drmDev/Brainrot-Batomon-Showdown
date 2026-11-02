@@ -39,6 +39,10 @@ var _achievement_layer: CanvasLayer = null
 var _snapshot_reader = null
 var _state_capture = null
 
+# Developer-only toast preview (created only when dev/dev_config.gd enables it).
+var _toast_catalog_script = null
+var _toast_preview_panel = null
+
 # Reactions: snapshot-driven conditions that log and submit toasts.
 var _reaction_evaluator = null
 var _reaction_player = null
@@ -79,6 +83,7 @@ func _initialize_mod() -> void:
 	# _log_message already no-ops when _log_file is null.
 	_initialized = true
 	_setup_log_file()
+	_setup_dev_tools()
 
 
 func _setup_achievement_system() -> void:
@@ -126,6 +131,36 @@ func _setup_reactions() -> void:
 	# Reactions log to the console/session log and submit to the shared toast queue.
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
 	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification)
+
+
+## Developer-only toast preview. Disabled unless dev/dev_config.gd says otherwise,
+## so retail sessions create no extra UI.
+func _setup_dev_tools() -> void:
+	var DevConfig = load(MOD_BASE_DIR.path_join("dev/dev_config.gd"))
+	if DevConfig == null or not DevConfig.is_enabled():
+		return
+
+	var ToastCatalog = load(MOD_BASE_DIR.path_join("notifications/toast_catalog.gd"))
+	var ToastPreviewPanel = load(MOD_BASE_DIR.path_join("hud/toast_preview_panel.gd"))
+	if ToastCatalog == null or ToastPreviewPanel == null or _achievement_layer == null:
+		return
+
+	_toast_catalog_script = ToastCatalog
+	_toast_preview_panel = ToastPreviewPanel.new(ToastCatalog.entries(), _preview_toast)
+	_toast_preview_panel.name = "ToastPreviewPanel"
+	_achievement_layer.add_child(_toast_preview_panel)
+	_print_notice("Brain Rot: dev toast preview enabled")
+
+
+## Show a registered toast without evaluating rules or touching progress/saves.
+func _preview_toast(entry: Dictionary) -> void:
+	if _toast_catalog_script == null:
+		return
+	_log_event("PREVIEW | %s:%s" % [
+		str(entry.get("kind", "")),
+		str(entry.get("id", "")),
+	])
+	_submit_notification(_toast_catalog_script.make_request(entry))
 
 
 ## Create/open the session log and write the startup banner (Creature Comforts layout).

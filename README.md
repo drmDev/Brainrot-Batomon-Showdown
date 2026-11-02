@@ -31,3 +31,7 @@ override with `-Godot <path>` if Godot is installed elsewhere.
 
 - Optional debug capture: set `BRAINROT_DUMP_DIR` to an absolute directory to
   write run/battle snapshots for fixture replay.
+- Developer mode: set `DEV_MODE := true` in `dev/dev_config.gd` (or set
+  `BRAINROT_DEV_MODE=1`) to show a small **Preview** button. It opens a dropdown
+  of every registered achievement and reaction toast; Play replays the selected
+  toast repeatedly without touching progress, saves, or game state.

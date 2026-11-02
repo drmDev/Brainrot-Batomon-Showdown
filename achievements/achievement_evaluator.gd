@@ -81,6 +81,15 @@ const BIG_DOG := {
 	"description": "Reach over 1 mil shield with Cinnabark",
 }
 
+## Every registered achievement definition, in stable order. Dev tooling (the
+## toast preview) and schema checks read this instead of repeating the list.
+const ALL_ACHIEVEMENTS := [
+	OH_YEAH,
+	HERD_U_LIEK_MUDKIPZ,
+	SO_I_STARTED_BLASTING,
+	BIG_DOG,
+]
+
 ## Twins double-evolution achievements: same rule, different species pair.
 const EVOLUTION_ACHIEVEMENTS := [
 	{"achievement": OH_YEAH, "pre_key": BEETBUD_KEY, "post_key": BEETDOWN_KEY},

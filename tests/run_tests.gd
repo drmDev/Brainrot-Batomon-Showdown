@@ -10,11 +10,14 @@ var _test_scripts := {
 	"achievement_store": preload("test_achievement_store.gd"),
 	"battle_completion_detector": preload("test_battle_completion_detector.gd"),
 	"achievements_schema": preload("test_achievements_schema.gd"),
+	"dev_config": preload("test_dev_config.gd"),
 	"fixture_replay": preload("test_fixture_replay.gd"),
 	"game_snapshot_reader": preload("test_game_snapshot_reader.gd"),
 	"state_capture": preload("test_state_capture.gd"),
 	"reaction_evaluator": preload("test_reaction_evaluator.gd"),
 	"reaction_player": preload("test_reaction_player.gd"),
+	"toast_catalog": preload("test_toast_catalog.gd"),
+	"toast_preview_panel": preload("test_toast_preview_panel.gd"),
 }
 
 
