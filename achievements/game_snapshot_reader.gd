@@ -43,7 +43,7 @@ extends RefCounted
 ## when the live value is a number: a missing, null, or non-numeric value is absent
 ## (and never raises, unlike a bare int(null)).
 ##
-## Verified field names (see dev/QUALITY.md "Grounding fakes in real game data"):
+## Verified field names:
 ##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench,
 ##        _active_passives[].gold_gain (income derivation only),
 ##        pending_round_start, pending_battle_opponent (promoted-run outcome guards;

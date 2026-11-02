@@ -20,8 +20,7 @@ This mod has no configurable settings; toasts are always on.
 
 ## Development
 
-See [`_agent.md`](_agent.md) for architecture and conventions, and
-[`dev/QUALITY.md`](dev/QUALITY.md) for the test strategy.
+See [`_agent.md`](_agent.md) for architecture and conventions
 
 - Parse-check every script: `powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\gd_checks.ps1`
 - Run the headless suite: `powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\run_tests.ps1`

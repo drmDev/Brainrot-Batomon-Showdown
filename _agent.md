@@ -18,11 +18,6 @@ Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalon
 - **Note provenance:** when adapting a non-trivial piece of code, add a brief comment or mention in the summary stating which Creature Comforts file it came from.
 - Where this file and Creature Comforts' `agent.md` conflict, this file wins for Brain Rot.
 
-## Preserve Existing Functionality
-- Prefer surgical changes over large refactors.
-- Do not modify unrelated systems unless necessary.
-- Never remove existing functionality without explicitly asking.
-
 ## Investigation
 - Before modifying code, inspect the relevant existing implementation.
 - Do not invent game APIs, node paths, or signal names.
@@ -32,12 +27,6 @@ Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalon
 - Be concise and direct.
 - Assume I am an experienced software developer.
 - When changes are complete, summarize what changed, what to test, and any remaining concerns.
-
-## Achievements
-- **So I started blasting** - Gentleman owns a level-2 Rhizuka on Day 5 or earlier (`run.current_round`), checked from team + bench.
-- **Oh Yeah!** - Twins double-evolution: Beetbud (level 2) -> two level-3 Beetdowns.
-- **Herd U Liek Mudkipz** - Twins double-evolution: Frillet (level 2) -> two level-3 Dewlotls.
-- **Big Dog, Best Dog** - a single Cinnabark unit generates more than 1,000,000 shield in a single battle, read from `simulation.data.battle_units` (`team_id == 0`, `slot_index`, `shield_granted`) with species resolved through the player run's team slot. Per-unit semantics: shield is not summed across records in the same slot.
 
 ## Logging
 Logging mirrors Creature Comforts (same helpers, different path). `mod_main.gd` keeps one append handle open for the session and writes to:
@@ -61,30 +50,6 @@ Watch it live:
 $log = "$env:APPDATA\Godot\app_userdata\Batomon Showdown\brain_rot\inspect.log"
 Get-Content $log -Wait -Tail 50
 ```
-
-## Reactions
-Reactions are snapshot-driven conditions that log to the console. They are independent of achievements: no store, no panel, no completion flags.
-
-**Shop layout and income.** The shop shows `[Lives, Day, Wins]`, mapping to `run.lives`, `run.current_round` (Day), and `run.current_wins`. Shop income is derived, not current gold: `35 + 5 * (Day - 1) + sum(_active_passives[].gold_gain)`, matching Creature Comforts' `_compute_daily_income`. `game_snapshot_reader.gd` emits it as the snapshot's `income` field whenever Day is known.
-
-- **six_seven** triggers on any of:
-  - **Run layout:** Lives == 6 AND (Day == 7 OR Wins == 7).
-  - **Income:** derived shop income == 67.
-  - **Battle:** any player-side unit's **final** battle total is exactly 67 on damage, heal, shield, burn, poison, or shock. Evaluated only at `battle_over`, never mid-fight. Logs `Brain Rot: REACTION | six_seven | <Species> <metric> 67` (e.g. `Beetdown damage 67`).
-  - Run details are built from whichever triggers matched (`Lives 6, Day 7`, `Lives 6, Wins 7`, `Income 67`, or comma-joined when several match).
-- **six_nine** is the same shape for Day 9 / Wins 9 / income 69, plus battle total 69. Title: `6 9`.
-- **four_twenty** (420) and **six_six_six** (666): income equals the value (run-scoped) OR any player-side unit's **final** battle total equals the value on damage, heal, shield, burn, poison, or shock. Battle timing, lowest-slot, and first-metric rules match six_seven. Logs `Income 420` / `Income 666` or the battle detail.
-- **over_9000**: income is **strictly greater than 9000** (run-scoped) OR any player-side unit's **final** battle total is **strictly greater than 9000** on **burn, poison, or shock only**. 9000 itself does not fire; 9001 does. The log reports the **actual total**, not the threshold. It also plays `assets/sounds/over-9000.ogg`.
-- **flawless_victory**: at `battle_over`, the **committed** post-battle run has **Wins == 10** and **Lives == 10**. Reads the battle snapshot's `outcome` (the promoted `RunManager.data` run, guarded by run identity + pending state), NOT the pre-battle replay copy. Fires once per run; `reset_battle()` does not re-arm it. Plays `assets/sounds/ff_fanfare.ogg`. Title: `Flawless Victory`.
-- During battle the player's run is read from `battle_state._replay_p1_data` (verified in MyBattleStats/BatoEyes and BatomonHelperBridge), falling back to `RunManager.data`, which may already be the promoted/completed run.
-- Run-scoped reactions trigger once per run, on the first matching snapshot. Repeated polls, leaving and returning, and a menu round-trip (run unavailable) do not retrigger. Only a verified run transition calls `reset_run()`.
-- Battle reactions fire at most **once per battle per reaction id**, even when several units qualify: the lowest slot wins, and within that slot the first metric in `BATTLE_METRICS` order (damage, heal, shield, burn, poison, shock). `reset_battle()` runs when a new battle starts. They are checked once, on the completed battle's final totals, so mid-fight values never match.
-- Run rows live in `REACTIONS` and may carry `lives` with `day`/`wins` (layout) and/or `income` plus optional `income_comparison`. Battle rows live in `BATTLE_REACTIONS`: `{"id", "value"}` for exact matches, plus optional `"comparison": "gt"` and `"metrics": [keys]`. Adding a value reaction is one row plus an id const. `tests/test_reaction_evaluator.gd` mirrors the exact-value rows in `BATTLE_CASES`, so every battle test runs the full matrix for each value; threshold reactions have their own block.
-- **Limitation:** occurrence tracking is session-only. Restarting the game or the mod can allow a reaction again within a continuing run.
-- **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `RUN PROGRESS | Day N, Lives L, Wins W` on every change to verify them.
-- `reaction_player.gd` logs (console and `inspect.log`), submits a toast through the shared notification host, and forwards the reaction id to an optional sound sink.
-- Reaction audio is table-driven in `audio/reaction_sounds.gd` (`REACTION_SOUNDS`). Adding a sound is one row plus the OGG in `assets/sounds/`; `mod_main` and the dev preview both call `play_for(id)`, so they cannot drift.
-- The dev toast preview calls the same sound mapping, so previewing a sound reaction plays it too.
 
 ## UI Sizing and Theme Overrides
 Godot's default control theme is sized for menus, not the mod's compact toast/HUD
@@ -144,15 +109,11 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
 | `dev/fixtures/` | Curated/captured run and battle snapshots replayed by `test_fixture_replay.gd`. |
-| `dev/QUALITY.md` | Test strategy, branch matrix, and framework evaluation. |
 
 ### Locating the gitignored dev files
-`.gitignore` has `dev/*`, so the `dev/` scripts and `dev/QUALITY.md` are **gitignored but
-present on disk**. Tools that respect `.gitignore` (including some directory listings)
-will not show them, which makes them look missing. They are not missing — read or run
-them by path:
+`.gitignore` has `dev/*`, so the `dev/` scripts are **gitignored but present on disk**. Tools that respect `.gitignore` (including some directory listings) will not show them, which makes them look missing. They are not missing — read or run them by path:
 
-- Read them directly, e.g. `dev/QUALITY.md`, `dev/run_tests.ps1`.
+- Read them directly, e.g. `dev/run_tests.ps1`.
 - List them with a shell that ignores `.gitignore`:
   `cmd /c dir /a "dev"` or `powershell -NoProfile -Command "Get-ChildItem dev -Force"`.
 - Run them from the mod root as documented in **Verification** below.
@@ -174,7 +135,6 @@ them by path:
 - Compact UI needs explicit font, stylebox, and popup overrides; see **UI Sizing and Theme Overrides**. Do not rely on Godot's default theme for HUD/tool controls.
 - Retain the 500 ms polling interval unless measurements justify changing it.
 - Tests must stay deterministic: inject `TestHelpers.TestClock` instead of relying on wall-clock time.
-- When adding an achievement, add it to `test_achievement_ids_unique_and_well_formed` and the branch matrix in `dev/QUALITY.md`.
 - Keep `tests/fixtures/` and `dev/fixtures/` in sync with the fields the evaluator reads.
 - The user performs gameplay tests; report actual checks separately from pending runtime validation.
 

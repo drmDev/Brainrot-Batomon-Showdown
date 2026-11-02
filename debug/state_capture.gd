@@ -2,7 +2,7 @@ extends RefCounted
 ## StateCapture - optional debug dump of run/battle snapshots.
 ##
 ## When the configured environment variable holds an absolute directory, each changed
-## snapshot is written there as JSON for replay under tests/ (see dev/QUALITY.md).
+## snapshot is written there as JSON for replay under tests/
 ## Unset during normal play, so nothing is written.
 ##
 ## The snapshot is the same Dictionary the evaluator consumes (produced by
