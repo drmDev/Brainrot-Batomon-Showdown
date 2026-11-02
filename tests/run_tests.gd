@@ -11,6 +11,7 @@ var _test_scripts := {
 	"battle_completion_detector": preload("test_battle_completion_detector.gd"),
 	"achievements_schema": preload("test_achievements_schema.gd"),
 	"dev_config": preload("test_dev_config.gd"),
+	"ui_sound": preload("test_ui_sound.gd"),
 	"fixture_replay": preload("test_fixture_replay.gd"),
 	"game_snapshot_reader": preload("test_game_snapshot_reader.gd"),
 	"state_capture": preload("test_state_capture.gd"),

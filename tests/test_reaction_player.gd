@@ -50,3 +50,28 @@ func test_missing_detail_logs_empty_detail() -> void:
 	_new_player(lines).play({"id": "six_seven"})
 	assert_eq(lines.size(), 1)
 	assert_eq(str(lines[0]), "Brain Rot: REACTION | six_seven | ")
+
+
+func test_play_forwards_reaction_id_to_sound_sink() -> void:
+	var sounds: Array = []
+	var player = ReactionPlayer.new(
+		Callable(),
+		Callable(),
+		func(id): sounds.append(str(id)),
+	)
+	player.play({"id": "over_9000", "detail": "slot 0 monster.name.x poison 9002"})
+	assert_eq(sounds, ["over_9000"])
+
+
+func test_play_all_forwards_every_reaction_id_to_sound_sink() -> void:
+	var sounds: Array = []
+	var player = ReactionPlayer.new(
+		Callable(),
+		Callable(),
+		func(id): sounds.append(str(id)),
+	)
+	player.play_all([
+		{"id": "six_seven", "detail": "Lives 6, Wins 7"},
+		{"id": "over_9000", "detail": "slot 0 monster.name.x poison 9002"},
+	])
+	assert_eq(sounds, ["six_seven", "over_9000"])

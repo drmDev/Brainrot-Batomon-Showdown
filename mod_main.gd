@@ -15,7 +15,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.23"
+const VERSION := "0.0.0.24"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
@@ -43,9 +43,10 @@ var _state_capture = null
 var _toast_catalog_script = null
 var _toast_preview_panel = null
 
-# Reactions: snapshot-driven conditions that log and submit toasts.
+# Reactions: snapshot-driven conditions that log, submit toasts, and play sounds.
 var _reaction_evaluator = null
 var _reaction_player = null
+var _over_9000_sound = null
 var _last_progress_signature := ""
 
 var _next_poll := 0
@@ -122,15 +123,27 @@ func _setup_achievement_system() -> void:
 
 
 func _setup_reactions() -> void:
-	"""Initialize the reaction evaluator and player (console + shared toast)."""
+	"""Initialize the reaction evaluator, player, and reaction sounds."""
 	var base_dir := MOD_BASE_DIR
 
 	var ReactionEvaluator = load(base_dir.path_join("reactions/reaction_evaluator.gd"))
 	_reaction_evaluator = ReactionEvaluator.new()
 
-	# Reactions log to the console/session log and submit to the shared toast queue.
+	var UiSound = load(base_dir.path_join("audio/ui_sound.gd"))
+	if UiSound != null:
+		_over_9000_sound = UiSound.new()
+		_over_9000_sound.setup(self, "over-9000.ogg")
+
+	# Reactions log, submit to the shared toast queue, and forward their id to the
+	# sound sink (only over_9000 currently has a sound).
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
-	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification)
+	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification, _play_reaction_sound)
+
+
+## Play the extra audio for reactions that have one.
+func _play_reaction_sound(id: String) -> void:
+	if id == "over_9000" and _over_9000_sound != null:
+		_over_9000_sound.play()
 
 
 ## Developer-only toast preview. Disabled unless dev/dev_config.gd says otherwise,
