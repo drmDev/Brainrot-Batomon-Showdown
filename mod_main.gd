@@ -4,10 +4,10 @@ extends Node
 ## Polls the live run and battle state every 500 ms, reads them into snapshots via
 ## achievements/game_snapshot_reader.gd, evaluates achievements via
 ## achievements/achievement_evaluator.gd, persists completion through
-## achievements/achievement_store.gd, and shows a bottom-right toast through
-## achievements/achievement_panel.gd when the Achievement Notifications setting is on.
+## achievements/achievement_store.gd, and shows toasts through the shared
+## notifications/notification_host.gd (achievements and reactions share one queue).
 ##
-## Responsibilities kept here: initialization, settings, polling, and coordination.
+## Responsibilities kept here: initialization, polling, and coordination.
 ## Snapshot reading, rules, persistence, UI, battle-completion detection, and debug
 ## capture live in their own files.
 ##
@@ -15,9 +15,10 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.19"
+const VERSION := "0.0.0.22"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
+const MOD_BASE_DIR := "res://mods/BrainRot"
 
 # Log file (same layout as Creature Comforts, different path)
 const OUTPUT_DIR := "user://brain_rot"
@@ -26,38 +27,33 @@ const LOG_FILE := "inspect.log"
 # Polling interval (matches the game's shop/battle state cadence)
 const POLL_INTERVAL_MS := 500
 
-# Settings (defaults match mod.json)
-const DEFAULT_ACHIEVEMENT_NOTIFICATIONS := false
+# Toasts are always on; there is no settings gate.
 
-var _achievement_notifications := DEFAULT_ACHIEVEMENT_NOTIFICATIONS
-var _settings_load_attempted := false
-var _settings_warning_shown := false
-
-# Achievement system: snapshot reading + poll-based detection + JSON persistence + panel
+# Achievement system: snapshot reading + poll-based detection + JSON persistence + toast host
 var _battle_completion = null
 var _achievement_evaluator = null
 var _achievement_store = null
-var _achievement_panel = null
+var _notification_host = null
+var _notification_request_script = null
 var _achievement_layer: CanvasLayer = null
 var _snapshot_reader = null
 var _state_capture = null
 
-# Reactions: snapshot-driven conditions that log to the console (future audio/visual).
+# Reactions: snapshot-driven conditions that log and submit toasts.
 var _reaction_evaluator = null
 var _reaction_player = null
 var _last_progress_signature := ""
 
 var _next_poll := 0
-var _last_phase := ""
+var _was_battle := false
 var _initialization_started := false
 var _initialized := false
 
 # Session log handle (null when the log file could not be opened; logging no-ops).
-var _log_path := ""
 var _log_file: FileAccess = null
 
 # Run-transition tracking (inferred from data we already read; no game signals).
-# Keys: run_instance_id, trainer_id, current_round. Empty until the first run.
+# Keys: run_id, run_instance_id, trainer_id, current_round. Empty until the first run.
 var _run_tracking: Dictionary = {}
 
 
@@ -71,35 +67,11 @@ func _ready() -> void:
 		_initialize_mod()
 
 
-func _load_settings() -> void:
-	if not is_inside_tree():
-		return
-	if _settings_load_attempted:
-		return
-
-	var mod_loader = get_node_or_null("/root/ModLoader")
-	if mod_loader == null:
-		return
-
-	_settings_load_attempted = true
-
-	if mod_loader.has_method("get_config"):
-		_achievement_notifications = mod_loader.get_config(MOD_ID, "achievement_notifications", DEFAULT_ACHIEVEMENT_NOTIFICATIONS)
-
-		# Connect to config_changed signal for live updates
-		if mod_loader.has_signal("config_changed") and not mod_loader.is_connected("config_changed", _on_config_changed):
-			mod_loader.connect("config_changed", _on_config_changed)
-	elif not _settings_warning_shown:
-		_settings_warning_shown = true
-		push_warning("Brain Rot: ModLoader.get_config() not available, using defaults")
-
-
 func _initialize_mod() -> void:
 	if _initialization_started:
 		return
 	_initialization_started = true
 
-	_load_settings()
 	_setup_achievement_system()
 	_setup_reactions()
 
@@ -109,20 +81,9 @@ func _initialize_mod() -> void:
 	_setup_log_file()
 
 
-func _on_config_changed(mod_id: String, key: String, value) -> void:
-	"""Handle live config changes from ModLoader."""
-	if mod_id != MOD_ID:
-		return
-
-	if key == "achievement_notifications" and value is bool:
-		_achievement_notifications = value
-		if not _achievement_notifications and _achievement_panel != null:
-			_achievement_panel.hide_panel()
-
-
 func _setup_achievement_system() -> void:
-	"""Initialize the achievement detection, persistence, and panel system."""
-	var base_dir := "res://mods/BrainRot"
+	"""Initialize detection, persistence, and the shared notification host."""
+	var base_dir := MOD_BASE_DIR
 
 	var GameSnapshotReader = load(base_dir.path_join("achievements/game_snapshot_reader.gd"))
 	_snapshot_reader = GameSnapshotReader.new(_has_property)
@@ -140,28 +101,31 @@ func _setup_achievement_system() -> void:
 	var StateCapture = load(base_dir.path_join("debug/state_capture.gd"))
 	_state_capture = StateCapture.new()
 
-	# Dedicated layer so the toast can appear over the battle results screen.
+	# Dedicated layer so toasts can appear over the battle results screen.
 	_achievement_layer = CanvasLayer.new()
 	_achievement_layer.layer = 100
 	_achievement_layer.name = "BrainRot_Layer"
 	add_child(_achievement_layer)
 
-	var AchievementPanel = load(base_dir.path_join("achievements/achievement_panel.gd"))
-	_achievement_panel = AchievementPanel.new()
-	_achievement_panel.name = "AchievementPanel"
-	_achievement_layer.add_child(_achievement_panel)
+	# Shared toast queue: achievements and reactions both submit here.
+	var NotificationManager = load(base_dir.path_join("notifications/notification_manager.gd"))
+	var NotificationHost = load(base_dir.path_join("notifications/notification_host.gd"))
+	_notification_request_script = load(base_dir.path_join("notifications/notification_request.gd"))
+	_notification_host = NotificationHost.new(NotificationManager.new(), _achievement_layer)
+	_notification_host.name = "NotificationHost"
+	_achievement_layer.add_child(_notification_host)
 
 
 func _setup_reactions() -> void:
-	"""Initialize the reaction evaluator and player (console placeholder)."""
-	var base_dir := "res://mods/BrainRot"
+	"""Initialize the reaction evaluator and player (console + shared toast)."""
+	var base_dir := MOD_BASE_DIR
 
 	var ReactionEvaluator = load(base_dir.path_join("reactions/reaction_evaluator.gd"))
 	_reaction_evaluator = ReactionEvaluator.new()
 
-	# Reactions print to the console and the session log.
+	# Reactions log to the console/session log and submit to the shared toast queue.
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
-	_reaction_player = ReactionPlayer.new(_print_notice)
+	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification)
 
 
 ## Create/open the session log and write the startup banner (Creature Comforts layout).
@@ -172,18 +136,18 @@ func _setup_log_file() -> void:
 		push_error("Brain Rot: Failed to create directory %s: %s" % [dir_path, error_string(dir_result)])
 		return
 
-	_log_path = OUTPUT_DIR.path_join(LOG_FILE)
-	var abs_log_path := ProjectSettings.globalize_path(_log_path)
+	var log_path := OUTPUT_DIR.path_join(LOG_FILE)
+	var abs_log_path := ProjectSettings.globalize_path(log_path)
 
-	if not FileAccess.file_exists(_log_path):
-		var file := FileAccess.open(_log_path, FileAccess.WRITE)
+	if not FileAccess.file_exists(log_path):
+		var file := FileAccess.open(log_path, FileAccess.WRITE)
 		if file == null:
 			push_error("Brain Rot: Cannot create log file %s: %s" % [abs_log_path, error_string(FileAccess.get_open_error())])
 			return
 		file.close()
 
 	# Keep one append handle open for the session instead of reopening per line.
-	_log_file = FileAccess.open(_log_path, FileAccess.READ_WRITE)
+	_log_file = FileAccess.open(log_path, FileAccess.READ_WRITE)
 	if _log_file == null:
 		push_error("Brain Rot: Cannot open log file %s: %s" % [abs_log_path, error_string(FileAccess.get_open_error())])
 		return
@@ -227,7 +191,7 @@ func _inspect_current_phase() -> void:
 	var battle_snapshot: Dictionary = {}
 	if is_battle:
 		# A new battle starts fresh battle-scoped reaction tracking.
-		if _last_phase != "battle":
+		if not _was_battle:
 			if _reaction_evaluator != null:
 				_reaction_evaluator.reset_battle()
 			_log_battle_probe(state)
@@ -254,16 +218,16 @@ func _inspect_current_phase() -> void:
 				_log_battle_units(battle_snapshot)
 				_poll_battle_achievements(battle_snapshot)
 				_poll_battle_reactions(battle_snapshot)
-	elif _last_phase == "battle":
+	elif _was_battle:
 		# Reset battle-scoped tracking only when actually leaving the battle phase.
 		if _battle_completion != null:
 			_battle_completion.reset()
 
-	_last_phase = "battle" if is_battle else ""
+	_was_battle = is_battle
 	_maybe_capture(battle_snapshot if is_battle else run_snapshot)
 
 
-## Poll the run snapshot for newly earned achievements, persist them, and show the panel.
+## Poll the run snapshot for newly earned achievements, persist them, and show a toast.
 func _poll_achievements(run_snapshot: Dictionary) -> void:
 	if _achievement_evaluator == null:
 		return
@@ -336,8 +300,25 @@ func _award_achievements(earned: Array) -> void:
 		if not _achievement_store.mark_completed(id):
 			continue
 		_print_notice("Brain Rot: EARNED | %s | %s" % [id, title])
-		if _achievement_notifications and _achievement_panel != null:
-			_achievement_panel.show_achievement(title, description)
+		_submit_achievement_notification(id, title, description)
+
+
+## Submit an achievement toast through the shared notification host.
+func _submit_achievement_notification(id: String, title: String, description: String) -> void:
+	if _notification_request_script == null:
+		return
+	_submit_notification(_notification_request_script.new(
+		_notification_request_script.KIND_ACHIEVEMENT,
+		id,
+		title,
+		description,
+	))
+
+
+## Forward a NotificationRequest to the shared host (no-op when unavailable).
+func _submit_notification(request) -> void:
+	if _notification_host != null:
+		_notification_host.submit(request)
 
 
 ## Detect a run transition from data we already read and reset run-scoped state.
@@ -367,13 +348,14 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 	var trainer_id := str(run_snapshot.get("trainer_id", ""))
 	var current_round := int(run_snapshot.get("current_round", 0))
 
+	var tracking := {
+		"run_id": run_id,
+		"run_instance_id": instance_id,
+		"trainer_id": trainer_id,
+		"current_round": current_round,
+	}
 	if _run_tracking.is_empty():
-		_run_tracking = {
-			"run_id": run_id,
-			"run_instance_id": instance_id,
-			"trainer_id": trainer_id,
-			"current_round": current_round,
-		}
+		_run_tracking = tracking
 		return
 
 	var reason := ""
@@ -389,18 +371,11 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 		reason = "day went backwards"
 
 	if reason.is_empty():
-		_run_tracking["run_id"] = run_id
-		_run_tracking["run_instance_id"] = instance_id
-		_run_tracking["current_round"] = current_round
+		_run_tracking = tracking
 		return
 
 	_print_notice("Brain Rot: run reset (%s)" % reason)
-	_run_tracking = {
-		"run_id": run_id,
-		"run_instance_id": instance_id,
-		"trainer_id": trainer_id,
-		"current_round": current_round,
-	}
+	_run_tracking = tracking
 	if _achievement_evaluator != null:
 		_achievement_evaluator.reset_run()
 	if _reaction_evaluator != null:
@@ -416,19 +391,14 @@ func _log_run_progress(run_snapshot: Dictionary) -> void:
 		return
 	if run_snapshot.is_empty():
 		return
-	var signature := "%s|%s|%s" % [
-		str(run_snapshot.get("current_round", "?")),
-		str(run_snapshot.get("lives", "?")),
-		str(run_snapshot.get("current_wins", "?")),
-	]
+	var day := str(run_snapshot.get("current_round", "?"))
+	var lives := str(run_snapshot.get("lives", "?"))
+	var wins := str(run_snapshot.get("current_wins", "?"))
+	var signature := "%s|%s|%s" % [day, lives, wins]
 	if signature == _last_progress_signature:
 		return
 	_last_progress_signature = signature
-	_log_event("RUN PROGRESS | Day %s, Lives %s, Wins %s" % [
-		str(run_snapshot.get("current_round", "?")),
-		str(run_snapshot.get("lives", "?")),
-		str(run_snapshot.get("current_wins", "?")),
-	])
+	_log_event("RUN PROGRESS | Day %s, Lives %s, Wins %s" % [day, lives, wins])
 
 
 ## Debug aid: one line per player-side unit with the final metrics the reaction reads.

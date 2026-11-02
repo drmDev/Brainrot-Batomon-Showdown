@@ -121,7 +121,7 @@ func poll(run_snapshot: Dictionary) -> Array:
 			continue
 		if not _matches(reaction, run_snapshot):
 			continue
-		_occurrences[id] = int(_occurrences.get(id, 0)) + 1
+		_occurrences[id] = 1
 		triggered.append({
 			"id": id,
 			"detail": "Lives %d, Wins %d" % [

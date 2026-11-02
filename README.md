@@ -8,8 +8,7 @@ persistence, and unlock toasts; more brainrot features are planned.
 ### Achievements
 - Tracks run and battle state every 500 ms and awards achievements as you play.
 - Completion is persisted to `achievements.json` at the mod root.
-- Unlocks are printed to the log; enable **Achievement Notifications** in the
-  ModLoader settings to also show a bottom-right toast.
+- Unlocks are printed to the log and shown as a bottom-right toast.
 
 ### Planned
 - Additional "fun" features beyond achievements. The achievement system will
@@ -17,12 +16,7 @@ persistence, and unlock toasts; more brainrot features are planned.
 
 ## Settings
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `achievement_notifications` | bool | `false` | Show toast notifications when an achievement is unlocked |
-
-Settings are read through `ModLoader.get_config("brain_rot", ...)` and update live
-when changed.
+This mod has no configurable settings; toasts are always on.
 
 ## Development
 

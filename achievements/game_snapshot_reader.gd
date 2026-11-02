@@ -131,8 +131,9 @@ func _read_monsters(monsters) -> Array:
 				var data = monster.get("data")
 				if _is_live(data) and _has_prop.call(data, "name_key"):
 					entry["name_key"] = str(data.get("name_key"))
-			if _has_prop.call(monster, "level"):
-				entry["level"] = int(monster.get("level"))
+			var level = _read_int(monster, "level")
+			if level != null:
+				entry["level"] = level
 		out.append(entry)
 	return out
 
@@ -145,10 +146,12 @@ func _read_battle_units(units) -> Array:
 		if not _is_live(unit):
 			continue
 		var entry := {}
-		if _has_prop.call(unit, "team_id"):
-			entry["team_id"] = int(unit.get("team_id"))
-		if _has_prop.call(unit, "slot_index"):
-			entry["slot_index"] = int(unit.get("slot_index"))
+		var team_id = _read_int(unit, "team_id")
+		if team_id != null:
+			entry["team_id"] = team_id
+		var slot_index = _read_int(unit, "slot_index")
+		if slot_index != null:
+			entry["slot_index"] = slot_index
 		for float_name in ["shield_granted", "damage_dealt", "healing_done"]:
 			var value = _read_float(unit, float_name)
 			if value != null:

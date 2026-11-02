@@ -3,9 +3,9 @@
 ## Summary
 Brain Rot (`brain_rot`) is a standalone GDScript mod for **Batomon Showdown**. Achievements — detect, persist, and display achievement unlocks — are the first feature; more "fun" features are planned, so keep new code modular rather than achievement-specific where practical.
 
-The achievement system polls the live run and battle state every 500 ms, reads them into plain snapshot Dictionaries (`game_snapshot_reader.gd`), evaluates achievements from those snapshots, writes completion to `achievements.json` at the mod root, and shows a bottom-right toast when the Achievement Notifications setting is enabled. It is self-contained and does not depend on other mods.
+The achievement system polls the live run and battle state every 500 ms, reads them into plain snapshot Dictionaries (`game_snapshot_reader.gd`), evaluates achievements from those snapshots, writes completion to `achievements.json` at the mod root, and shows a bottom-right toast. It is self-contained and does not depend on other mods.
 
-Separation of concerns: only `game_snapshot_reader.gd` touches live game objects; the evaluator is rules only; `battle_completion_detector.gd` owns when battle evaluation happens; `debug/state_capture.gd` owns debug dumps; `mod_main.gd` owns initialization, settings, polling, run-transition detection, and coordination.
+Separation of concerns: only `game_snapshot_reader.gd` touches live game objects; the evaluator is rules only; `battle_completion_detector.gd` owns when battle evaluation happens; `debug/state_capture.gd` owns debug dumps; `mod_main.gd` owns initialization, polling, run-transition detection, and coordination.
 
 ## Previous Mod
 Brain Rot is an offshoot of **Creature Comforts** but is a **separate, standalone mod**. Creature Comforts contains a lot of solid, working code (game-state access, node paths, signals, HUD panels, persistence, test tooling) that should be reused to ease implementation.
@@ -75,23 +75,23 @@ Reactions are snapshot-driven conditions that log to the console. They are indep
 - **over_9000** is battle-only: any player-side unit's **final** battle total is **strictly greater than 9000** on **burn, poison, or shock only** — damage, heal, and shield are not considered. 9000 itself does not fire; 9001 does. Same timing, lowest-slot, and first-metric rules as the other battle reactions. The log reports the **actual total**, not the threshold: `Brain Rot: REACTION | over_9000 | slot 1 monster.name.x poison 9002`.
 - Battle reactions are rows in `BATTLE_REACTIONS`: `{"id", "value"}` for exact matches, plus optional `"comparison": "gt"` and `"metrics": [keys]` for threshold reactions. Adding another is one row plus an id const. `tests/test_reaction_evaluator.gd` mirrors the exact-value rows in `BATTLE_CASES`, so every battle test runs the full matrix for each value; threshold reactions have their own block.
 - **Limitation:** occurrence tracking is session-only. Restarting the game or the mod can allow a reaction again within a continuing run.
-- **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `Brain Rot: run progress | Day N, Lives L, Wins W` on every change to verify them.
-- `reaction_player.gd` is the future audio/visual integration point; today it only logs (console and `inspect.log`).
+- **Unverified field mappings:** `lives` is the displayed remaining-lives counter and starts at 10, and when `lives`/`current_wins` are committed relative to each other, are inferred from Creature Comforts usage, not the game's own UI. With `BRAINROT_DUMP_DIR` set, `mod_main` logs `RUN PROGRESS | Day N, Lives L, Wins W` on every change to verify them.
+- `reaction_player.gd` logs (console and `inspect.log`) and submits a toast through the shared notification host; it remains the future audio/visual integration point.
 
 ## Files
 | File | Responsibility |
 |---|---|
-| `mod.json` | Mod identity (`brain_rot`), version, description, and the `achievement_notifications` setting. |
-| `mod_main.gd` | Loader lifecycle, settings, session log (`user://brain_rot/inspect.log`), 500 ms polling, run-transition detection, coordination of reader/evaluator/store/panel/detector/capture, award persistence, and toast display. |
+| `mod.json` | Mod identity (`brain_rot`), version, and description. |
+| `mod_main.gd` | Loader lifecycle, session log (`user://brain_rot/inspect.log`), 500 ms polling, run-transition detection, coordination of reader/evaluator/store/detector/capture, award persistence, and toast display. |
 | `achievements/game_snapshot_reader.gd` | The only place that reads live game objects; produces plain snapshot Dictionaries (run and battle) with absent keys for unknown values. |
 | `achievements/achievement_evaluator.gd` | Rules only: `poll(run_snapshot)`, `poll_battle(battle_snapshot)`, `reset_run()`; returns structured achievements without persistence or UI side effects. |
 | `achievements/achievement_store.gd` | JSON persistence for completion at the mod root (`achievements.json`); tolerates missing or corrupt files. |
-| `achievements/achievement_panel.gd` | Bottom-right achievement toast; auto-hides after ~4 seconds. |
+| `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. |
+| `hud/styles.gd` | Shared palette, font, panel chrome, and toast layout metrics. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
 | `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
-| `reactions/reaction_player.gd` | Plays a reaction; today logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`. Future audio/visual integration point. |
+| `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, and submits a toast. Future audio/visual integration point. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `hud/comfort_panel.gd` | Shared dark-navy/gold panel base (palette, font, resize plumbing) used by mod HUD panels, including the toast. |
 | `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
@@ -119,10 +119,10 @@ them by path:
 - Keep the evaluator independent of live game objects, file writing, and UI drawing. All live-object reads belong in `game_snapshot_reader.gd`.
 - Snapshots use absent keys for unknown values; defaults belong to the rules, not the reader.
 - Battle evaluation timing belongs to `battle_completion_detector.gd`; the evaluator's `poll_battle` is a pure rule check.
-- Persistence must not depend on the panel existing or notifications being enabled.
+- Persistence must not depend on the toast host existing.
 - Call `reset_run()` at verified run transitions (inferred in `mod_main` from `run_id`, then run object instance, trainer, and day regression). `run_id` is the primary identity: the game promotes `RunManager.data` to a new RunData object when a battle starts, so instance comparison alone fires a false reset at every battle. An unavailable run does not clear tracking; the comparison on return detects a new run.
 - Reactions must not read the achievement store or depend on achievement completion.
-- The toast is gated by the Achievement Notifications setting.
+- Toasts are always on.
 - Retain the 500 ms polling interval unless measurements justify changing it.
 - Tests must stay deterministic: inject `TestHelpers.TestClock` instead of relying on wall-clock time.
 - When adding an achievement, add it to `test_achievement_ids_unique_and_well_formed` and the branch matrix in `dev/QUALITY.md`.

@@ -1,16 +1,7 @@
 {
 	"id": "brain_rot",
 	"name": "Brain Rot",
-	"version": "0.0.0.19",
+	"version": "0.0.0.22",
 	"author": "NescapePlan",
-	"description": "Fun additions for Batomon Showdown, starting with achievements",
-	"settings": [
-		{
-			"key": "achievement_notifications",
-			"label": "Achievement Notifications",
-			"type": "bool",
-			"default": false,
-			"description": "Show toast notifications when an achievement is unlocked"
-		}
-	]
+	"description": "Fun additions for Batomon Showdown, starting with achievements"
 }
