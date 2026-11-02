@@ -21,7 +21,7 @@ extends RefCounted
 ##   mid-fight. Each battle reaction fires at most ONCE per battle, even when several
 ##   units qualify: the lowest slot wins, and within that slot the first metric in
 ##   BATTLE_METRICS order. Different battle reactions are tracked independently, so
-##   two of them can fire in the same battle.
+##   several of them can fire in the same battle.
 ## - An empty snapshot does NOT reset anything.
 ##
 ## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
@@ -45,6 +45,11 @@ extends RefCounted
 ##     (or 666) on one of the same six metrics. Same timing and reporting rules as
 ##     six_seven's battle condition. No run condition (lives/wins are not involved).
 ##   These are rows in BATTLE_REACTIONS; adding another value reaction is one row.
+## - "over_9000"
+##   Battle condition only: any player-side unit's FINAL battle total is strictly
+##     greater than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
+##     considered. 9000 itself does not fire; 9001 does. The log reports the actual
+##     total (e.g. "slot 1 monster.name.x poison 9002"), not the threshold.
 
 const SIX_SEVEN_ID := "six_seven"
 const SIX_SEVEN_LIVES := 6
@@ -52,6 +57,12 @@ const SIX_SEVEN_WINS := 7
 
 const FOUR_TWENTY_ID := "four_twenty"
 const SIX_SIX_SIX_ID := "six_six_six"
+const OVER_9000_ID := "over_9000"
+const OVER_9000_THRESHOLD := 9000
+
+# How a battle reaction compares a unit's total to its `value`.
+const COMPARISON_EQUALS := "eq"          # total == value
+const COMPARISON_GREATER_THAN := "gt"    # total > value
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
@@ -72,13 +83,24 @@ const BATTLE_METRICS := [
 	{"key": "shock_inflicted", "label": "shock"},
 ]
 
-## Battle-scoped reaction table: one row per reaction, keyed by the exact final
-## per-battle total that triggers it. Each row is tracked independently, so several
-## can fire in the same battle. Adding a value reaction is one row here.
+## Battle-scoped reaction table: one row per reaction. Each row is tracked
+## independently, so several can fire in the same battle. Adding a reaction is one row.
+##
+## Row fields:
+##   id          reaction id (required)
+##   value       the final per-battle total to compare against (required)
+##   comparison  COMPARISON_EQUALS (default) or COMPARISON_GREATER_THAN
+##   metrics     optional list of BATTLE_METRICS keys to consider; default is all six
 const BATTLE_REACTIONS := [
 	{"id": SIX_SEVEN_ID, "value": 67},
 	{"id": FOUR_TWENTY_ID, "value": 420},
 	{"id": SIX_SIX_SIX_ID, "value": 666},
+	{
+		"id": OVER_9000_ID,
+		"value": OVER_9000_THRESHOLD,
+		"comparison": COMPARISON_GREATER_THAN,
+		"metrics": ["burn_inflicted", "poison_inflicted", "shock_inflicted"],
+	},
 ]
 
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
@@ -111,8 +133,8 @@ func poll(run_snapshot: Dictionary) -> Array:
 
 
 ## Poll a completed battle snapshot. Returns at most one reaction per battle reaction
-## id: the lowest player-side slot with a metric exactly equal to that reaction's
-## value. Mid-battle snapshots never match.
+## id: the lowest player-side slot with a metric satisfying that reaction's comparison.
+## Mid-battle snapshots never match.
 func poll_battle(battle_snapshot: Dictionary) -> Array:
 	var triggered: Array = []
 	if battle_snapshot.is_empty():
@@ -131,8 +153,7 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 		var id := str(reaction.get("id", ""))
 		if id.is_empty() or _battle_fired.has(id):
 			continue
-		var value := int(reaction.get("value", 0))
-		var found := _find_best_match(units, value)
+		var found := _find_best_match(units, reaction)
 		if found.is_empty():
 			continue
 		_battle_fired[id] = true
@@ -143,7 +164,7 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 				slot,
 				_species_at(team, slot),
 				str(found.get("label", "")),
-				value,
+				int(found.get("value", 0)),
 			],
 		})
 	return triggered
@@ -175,11 +196,14 @@ func _matches(reaction: Dictionary, run_snapshot: Dictionary) -> bool:
 	return int(lives) == int(reaction.get("lives")) and int(wins) == int(reaction.get("wins"))
 
 
-## Lowest player-side slot with a metric exactly `expected`, plus the first matching
-## metric label in BATTLE_METRICS order. Returns {} when nothing matches.
-func _find_best_match(units: Array, expected: int) -> Dictionary:
+## Lowest player-side slot with a metric satisfying `reaction`, plus the first matching
+## metric label in BATTLE_METRICS order and the actual total. Returns {} when nothing
+## matches.
+func _find_best_match(units: Array, reaction: Dictionary) -> Dictionary:
+	var metrics := _metrics_for(reaction)
 	var best_slot := -1
 	var best_label := ""
+	var best_value := 0
 	for unit in units:
 		if not unit is Dictionary:
 			continue
@@ -193,22 +217,61 @@ func _find_best_match(units: Array, expected: int) -> Dictionary:
 		# A lower slot already matched, so this unit cannot win.
 		if best_slot >= 0 and slot >= best_slot:
 			continue
-		for metric in BATTLE_METRICS:
-			if _metric_equals(unit, metric, expected):
-				best_slot = slot
-				best_label = str(metric.get("label", ""))
-				break
+		for metric in metrics:
+			var total = _matching_total(unit, metric, reaction)
+			if total == null:
+				continue
+			best_slot = slot
+			best_label = str(metric.get("label", ""))
+			best_value = int(total)
+			break
 	if best_slot < 0:
 		return {}
-	return {"slot": best_slot, "label": best_label}
+	return {"slot": best_slot, "label": best_label, "value": best_value}
 
 
-## Is this unit's metric exactly `expected`? Non-numeric values never match.
-func _metric_equals(unit: Dictionary, metric: Dictionary, expected: int) -> bool:
+## The metrics a reaction considers: its own `metrics` list when present, else all of
+## BATTLE_METRICS. Order always follows BATTLE_METRICS.
+func _metrics_for(reaction: Dictionary) -> Array:
+	var keys = reaction.get("metrics")
+	if not keys is Array:
+		# No filter on this row, so every battle metric is eligible.
+		return BATTLE_METRICS
+
+	var filtered: Array = []
+	for metric in BATTLE_METRICS:
+		if keys.has(str(metric.get("key", ""))):
+			filtered.append(metric)
+	return filtered
+
+
+## The unit's total for this metric when it satisfies the reaction, else null.
+## Non-numeric values never match.
+func _matching_total(unit: Dictionary, metric: Dictionary, reaction: Dictionary):
 	var value = unit.get(str(metric.get("key", "")))
 	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
-		return false
-	return int(value) == expected
+		return null
+
+	var total: int = int(value)
+	var expected: int = int(reaction.get("value", 0))
+	var comparison := str(reaction.get("comparison", COMPARISON_EQUALS))
+
+	if comparison == COMPARISON_EQUALS:
+		if total == expected:
+			return total
+		return null
+
+	if comparison == COMPARISON_GREATER_THAN:
+		if total > expected:
+			return total
+		return null
+
+	# A row with an unknown comparison is a table bug: never match, and say so.
+	push_warning("Brain Rot: unknown battle reaction comparison '%s' for %s" % [
+		comparison,
+		str(reaction.get("id", "?")),
+	])
+	return null
 
 
 ## Species name_key of the team slot, or "?" when unavailable.

@@ -11,6 +11,7 @@ const AchievementStore = preload("../achievements/achievement_store.gd")
 const SIX_SEVEN := "six_seven"
 const FOUR_TWENTY := "four_twenty"
 const SIX_SIX_SIX := "six_six_six"
+const OVER_9000 := "over_9000"
 
 const CINNABARK := "monster.name.cinnabark"
 const RHIZUKA := "monster.name.rhizuka"
@@ -412,41 +413,186 @@ func test_battle_all_reactions_fire_in_one_battle() -> void:
 		{"name_key": CINNABARK, "level": 3},
 		{"name_key": RHIZUKA, "level": 3},
 		{"name_key": "monster.name.onsetra", "level": 3},
+		{"name_key": "monster.name.beetbud", "level": 3},
 	]
 	var earned: Array = evaluator.poll_battle(_battle(team, [
 		_unit(0, {"damage_dealt": 67}),
 		_unit(1, {"healing_done": 420}),
 		_unit(2, {"shield_granted": 666}),
+		_unit(3, {"poison_inflicted": 9002}),
 	]))
-	assert_eq(earned.size(), 3)
+	assert_eq(earned.size(), 4)
 	var ids := _ids(earned)
 	assert_true(ids.has(SIX_SEVEN))
 	assert_true(ids.has(FOUR_TWENTY))
 	assert_true(ids.has(SIX_SIX_SIX))
+	assert_true(ids.has(OVER_9000))
 
 
 func test_battle_same_unit_multiple_values_fire_all() -> void:
 	var evaluator = _new_evaluator()
 	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
-		_unit(0, {"damage_dealt": 67, "shield_granted": 420, "burn_inflicted": 666}),
+		_unit(0, {
+			"damage_dealt": 67,
+			"shield_granted": 420,
+			"burn_inflicted": 666,
+			"poison_inflicted": 9002,
+		}),
 	]))
-	assert_eq(earned.size(), 3)
+	assert_eq(earned.size(), 4)
 	var ids := _ids(earned)
 	assert_true(ids.has(SIX_SEVEN))
 	assert_true(ids.has(FOUR_TWENTY))
 	assert_true(ids.has(SIX_SIX_SIX))
+	assert_true(ids.has(OVER_9000))
 
 
 func test_battle_reactions_do_not_trigger_on_run_snapshot() -> void:
 	# Battle reactions are battle-only: lives/wins never trigger them. (6/7 still
 	# triggers six_seven's run condition, so assert on ids, not emptiness.)
 	var evaluator = _new_evaluator()
-	for snapshot in [_snap(6, 7), _snap(4, 20), _snap(666, 666)]:
+	for snapshot in [_snap(6, 7), _snap(4, 20), _snap(666, 666), _snap(9002, 9002)]:
 		var ids := _ids(evaluator.poll(snapshot))
 		assert_false(ids.has(FOUR_TWENTY))
 		assert_false(ids.has(SIX_SIX_SIX))
+		assert_false(ids.has(OVER_9000))
 	assert_eq(evaluator.occurrence_count(FOUR_TWENTY), 0)
 	assert_eq(evaluator.occurrence_count(SIX_SIX_SIX), 0)
+	assert_eq(evaluator.occurrence_count(OVER_9000), 0)
+
+
+# --- 8c. over_9000: burn/poison/shock strictly above 9000 ---
+
+const OVER_9000_METRICS := ["burn_inflicted", "poison_inflicted", "shock_inflicted"]
+
+
+func test_over_9000_each_dot_metric_triggers_with_actual_total() -> void:
+	for metric in BATTLE_METRICS:
+		var key := str(metric["key"])
+		if not OVER_9000_METRICS.has(key):
+			continue
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+			_unit(0, {key: 9002}),
+		]))
+		assert_eq(earned.size(), 1, key)
+		if earned.size() == 1:
+			assert_eq(str(earned[0].get("id", "")), OVER_9000, key)
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(0, CINNABARK, str(metric["label"]), 9002),
+				key
+			)
+
+
+func test_over_9000_boundary_9000_does_not_trigger() -> void:
+	for key in OVER_9000_METRICS:
+		var evaluator = _new_evaluator()
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {key: 9000})])),
+			key
+		)
+
+
+func test_over_9000_ignores_damage_heal_shield() -> void:
+	for key in ["damage_dealt", "healing_done", "shield_granted"]:
+		var evaluator = _new_evaluator()
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {key: 12000})])),
+			key
+		)
+
+
+func test_over_9000_enemy_side_ignored() -> void:
+	var evaluator = _new_evaluator()
+	assert_empty(evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"poison_inflicted": 9002}, 1),
+	])))
+
+
+func test_over_9000_repeated_polls_do_not_retrigger() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"poison_inflicted": 9002})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_over_9000_lowest_slot_wins() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle(_team_two(), [
+		_unit(2, {"shock_inflicted": 12000}),
+		_unit(1, {"poison_inflicted": 9001}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), _detail(1, RHIZUKA, "poison", 9001))
+
+
+func test_over_9000_first_dot_metric_wins_within_a_slot() -> void:
+	# BATTLE_METRICS order is burn, poison, shock.
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"shock_inflicted": 12000, "burn_inflicted": 9001}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), _detail(0, CINNABARK, "burn", 9001))
+
+
+func test_over_9000_mid_fight_snapshot_does_not_trigger() -> void:
+	var evaluator = _new_evaluator()
+	assert_empty(
+		evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": 9002})], false))
+	)
+	assert_eq(
+		evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": 9002})])).size(),
+		1
+	)
+
+
+func test_over_9000_missing_battle_over_does_not_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := {
+		"kind": "battle",
+		"team": _team_one(),
+		"battle_units": [_unit(0, {"poison_inflicted": 9002})],
+	}
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_over_9000_reset_battle_permits_another_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"poison_inflicted": 9002})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_battle()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_over_9000_reset_run_clears_battle_tracking() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"poison_inflicted": 9002})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_over_9000_invalid_values_ignored() -> void:
+	var evaluator = _new_evaluator()
+	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": null})])))
+	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": "9002"})])))
+	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": true})])))
+
+
+func test_battle_unknown_comparison_never_matches() -> void:
+	# A typo in a row's `comparison` must not silently behave as equality.
+	var evaluator = _new_evaluator()
+	var metric := {"key": "damage_dealt", "label": "damage"}
+	var unit := _unit(0, {"damage_dealt": 67})
+	assert_eq(evaluator._matching_total(unit, metric, {"id": "bogus", "value": 67, "comparison": "gte"}), null)
+	assert_eq(evaluator._matching_total(unit, metric, {"id": "bogus", "value": 67, "comparison": "GT"}), null)
+	# The two supported comparisons still work.
+	assert_eq(evaluator._matching_total(unit, metric, {"id": "eq", "value": 67}), 67)
+	assert_eq(evaluator._matching_total(unit, metric, {"id": "gt", "value": 66, "comparison": "gt"}), 67)
 
 
 # --- 9. achievement completion state does not suppress reactions ---
