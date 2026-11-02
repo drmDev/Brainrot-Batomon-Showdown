@@ -18,8 +18,10 @@ extends RefCounted
 ##   Repeated matching polls, leaving and returning, and a menu round-trip (run
 ##   unavailable) do not retrigger. Only reset_run() clears it.
 ## - Battle-scoped: evaluated only on the FINAL battle totals (battle_over), never
-##   mid-fight. Fires at most ONCE per battle, even when several units qualify: the
-##   lowest slot wins, and within that slot the first metric in BATTLE_METRICS order.
+##   mid-fight. Each battle reaction fires at most ONCE per battle, even when several
+##   units qualify: the lowest slot wins, and within that slot the first metric in
+##   BATTLE_METRICS order. Different battle reactions are tracked independently, so
+##   two of them can fire in the same battle.
 ## - An empty snapshot does NOT reset anything.
 ##
 ## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
@@ -38,11 +40,18 @@ extends RefCounted
 ##     counters: damage_dealt, healing_done, shield_granted, burn_inflicted,
 ##     poison_inflicted, shock_inflicted. The log names the unit (slot + species) and
 ##     the metric. Only the lowest matching slot is reported.
+## - "four_twenty" / "six_six_six"
+##   Battle condition only: any player-side unit's FINAL battle total is exactly 420
+##     (or 666) on one of the same six metrics. Same timing and reporting rules as
+##     six_seven's battle condition. No run condition (lives/wins are not involved).
+##   These are rows in BATTLE_REACTIONS; adding another value reaction is one row.
 
 const SIX_SEVEN_ID := "six_seven"
 const SIX_SEVEN_LIVES := 6
 const SIX_SEVEN_WINS := 7
-const SIX_SEVEN_VALUE := 67
+
+const FOUR_TWENTY_ID := "four_twenty"
+const SIX_SIX_SIX_ID := "six_six_six"
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
@@ -52,8 +61,8 @@ const REACTIONS := [
 	{"id": SIX_SEVEN_ID, "lives": SIX_SEVEN_LIVES, "wins": SIX_SEVEN_WINS},
 ]
 
-## Battle metrics checked against SIX_SEVEN_VALUE, in log order. All are accumulated
-## per-battle counters on the unit record.
+## Battle metrics checked against each battle reaction's value, in log order. All are
+## accumulated per-battle counters on the unit record.
 const BATTLE_METRICS := [
 	{"key": "damage_dealt", "label": "damage"},
 	{"key": "healing_done", "label": "heal"},
@@ -63,10 +72,19 @@ const BATTLE_METRICS := [
 	{"key": "shock_inflicted", "label": "shock"},
 ]
 
+## Battle-scoped reaction table: one row per reaction, keyed by the exact final
+## per-battle total that triggers it. Each row is tracked independently, so several
+## can fire in the same battle. Adding a value reaction is one row here.
+const BATTLE_REACTIONS := [
+	{"id": SIX_SEVEN_ID, "value": 67},
+	{"id": FOUR_TWENTY_ID, "value": 420},
+	{"id": SIX_SIX_SIX_ID, "value": 666},
+]
+
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
 var _occurrences: Dictionary = {}
-# Battle-scoped: the reaction already fired for the current battle.
-var _battle_fired := false
+# Battle-scoped: reaction ids that already fired for the current battle.
+var _battle_fired: Dictionary = {}
 
 
 ## Poll a run snapshot. Returns newly triggered run-scoped reactions (empty most polls).
@@ -92,66 +110,54 @@ func poll(run_snapshot: Dictionary) -> Array:
 	return triggered
 
 
-## Poll a completed battle snapshot. Returns at most one battle-scoped reaction per
-## battle: the lowest player-side slot with a metric exactly SIX_SEVEN_VALUE. Mid-battle
-## snapshots never match.
+## Poll a completed battle snapshot. Returns at most one reaction per battle reaction
+## id: the lowest player-side slot with a metric exactly equal to that reaction's
+## value. Mid-battle snapshots never match.
 func poll_battle(battle_snapshot: Dictionary) -> Array:
-	if _battle_fired or battle_snapshot.is_empty():
-		return []
+	var triggered: Array = []
+	if battle_snapshot.is_empty():
+		return triggered
 	if not bool(battle_snapshot.get("battle_over", false)):
-		return []
+		return triggered
 
 	var units = battle_snapshot.get("battle_units")
 	if not units is Array:
-		return []
+		return triggered
 	var team = battle_snapshot.get("team")
 	if not team is Array:
 		team = []
 
-	var best_slot := -1
-	var best_metric: Dictionary = {}
-	for unit in units:
-		if not unit is Dictionary:
+	for reaction in BATTLE_REACTIONS:
+		var id := str(reaction.get("id", ""))
+		if id.is_empty() or _battle_fired.has(id):
 			continue
-		var team_id = unit.get("team_id")
-		if typeof(team_id) != TYPE_INT or int(team_id) != PLAYER_TEAM_ID:
+		var value := int(reaction.get("value", 0))
+		var found := _find_best_match(units, value)
+		if found.is_empty():
 			continue
-		var slot_value = unit.get("slot_index")
-		if typeof(slot_value) != TYPE_INT:
-			continue
-		var slot := int(slot_value)
-		# A lower slot already matched, so this unit cannot win.
-		if best_slot >= 0 and slot >= best_slot:
-			continue
-		for metric in BATTLE_METRICS:
-			if _metric_is_six_seven(unit, metric):
-				best_slot = slot
-				best_metric = metric
-				break
-
-	if best_slot < 0:
-		return []
-	_battle_fired = true
-	return [{
-		"id": SIX_SEVEN_ID,
-		"detail": "slot %d %s %s %d" % [
-			best_slot,
-			_species_at(team, best_slot),
-			str(best_metric.get("label", "")),
-			SIX_SEVEN_VALUE,
-		],
-	}]
+		_battle_fired[id] = true
+		var slot := int(found.get("slot", -1))
+		triggered.append({
+			"id": id,
+			"detail": "slot %d %s %s %d" % [
+				slot,
+				_species_at(team, slot),
+				str(found.get("label", "")),
+				value,
+			],
+		})
+	return triggered
 
 
 ## Clear all tracking. Call at a verified run transition.
 func reset_run() -> void:
 	_occurrences.clear()
-	_battle_fired = false
+	_battle_fired.clear()
 
 
 ## Clear battle-scoped tracking. Call when entering a new battle.
 func reset_battle() -> void:
-	_battle_fired = false
+	_battle_fired.clear()
 
 
 ## How many times this run-scoped reaction has triggered in the current run (0 or 1).
@@ -169,12 +175,40 @@ func _matches(reaction: Dictionary, run_snapshot: Dictionary) -> bool:
 	return int(lives) == int(reaction.get("lives")) and int(wins) == int(reaction.get("wins"))
 
 
-## Is this unit's metric exactly SIX_SEVEN_VALUE? Non-numeric values never match.
-func _metric_is_six_seven(unit: Dictionary, metric: Dictionary) -> bool:
+## Lowest player-side slot with a metric exactly `expected`, plus the first matching
+## metric label in BATTLE_METRICS order. Returns {} when nothing matches.
+func _find_best_match(units: Array, expected: int) -> Dictionary:
+	var best_slot := -1
+	var best_label := ""
+	for unit in units:
+		if not unit is Dictionary:
+			continue
+		var team_id = unit.get("team_id")
+		if typeof(team_id) != TYPE_INT or int(team_id) != PLAYER_TEAM_ID:
+			continue
+		var slot_value = unit.get("slot_index")
+		if typeof(slot_value) != TYPE_INT:
+			continue
+		var slot := int(slot_value)
+		# A lower slot already matched, so this unit cannot win.
+		if best_slot >= 0 and slot >= best_slot:
+			continue
+		for metric in BATTLE_METRICS:
+			if _metric_equals(unit, metric, expected):
+				best_slot = slot
+				best_label = str(metric.get("label", ""))
+				break
+	if best_slot < 0:
+		return {}
+	return {"slot": best_slot, "label": best_label}
+
+
+## Is this unit's metric exactly `expected`? Non-numeric values never match.
+func _metric_equals(unit: Dictionary, metric: Dictionary, expected: int) -> bool:
 	var value = unit.get(str(metric.get("key", "")))
 	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
 		return false
-	return int(value) == SIX_SEVEN_VALUE
+	return int(value) == expected
 
 
 ## Species name_key of the team slot, or "?" when unavailable.

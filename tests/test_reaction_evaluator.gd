@@ -1,19 +1,84 @@
 extends "test_runner.gd"
 ## Unit tests for reactions/reaction_evaluator.gd.
+##
+## Battle reactions are data-driven: BATTLE_CASES mirrors the evaluator's
+## BATTLE_REACTIONS table, so every battle test runs the same matrix for each value
+## (67, 420, 666). Adding a value reaction means one row here, not a new test block.
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const AchievementStore = preload("../achievements/achievement_store.gd")
 
 const SIX_SEVEN := "six_seven"
+const FOUR_TWENTY := "four_twenty"
+const SIX_SIX_SIX := "six_six_six"
+
+const CINNABARK := "monster.name.cinnabark"
+const RHIZUKA := "monster.name.rhizuka"
+
+## One row per battle reaction: id + the exact final total that triggers it.
+const BATTLE_CASES := [
+	{"id": SIX_SEVEN, "value": 67},
+	{"id": FOUR_TWENTY, "value": 420},
+	{"id": SIX_SIX_SIX, "value": 666},
+]
+
+## Metric key -> log label, in the evaluator's BATTLE_METRICS order.
+const BATTLE_METRICS := [
+	{"key": "damage_dealt", "label": "damage"},
+	{"key": "healing_done", "label": "heal"},
+	{"key": "shield_granted", "label": "shield"},
+	{"key": "burn_inflicted", "label": "burn"},
+	{"key": "poison_inflicted", "label": "poison"},
+	{"key": "shock_inflicted", "label": "shock"},
+]
 
 
 func _new_evaluator():
 	return ReactionEvaluator.new()
 
 
-## Run snapshot with the two fields the reaction reads.
+## Run snapshot with the two fields the run reaction reads.
 func _snap(lives, wins) -> Dictionary:
 	return {"kind": "run", "lives": lives, "current_wins": wins}
+
+
+func _battle(team: Array, units: Array, battle_over: bool = true) -> Dictionary:
+	return {
+		"kind": "battle",
+		"team": team,
+		"battle_units": units,
+		"battle_over": battle_over,
+	}
+
+
+func _unit(slot: int, metrics: Dictionary, team_id: int = 0) -> Dictionary:
+	var unit := {"team_id": team_id, "slot_index": slot}
+	unit.merge(metrics, true)
+	return unit
+
+
+func _team_one() -> Array:
+	return [{"name_key": CINNABARK, "level": 3}]
+
+
+func _team_two() -> Array:
+	return [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": RHIZUKA, "level": 3},
+	]
+
+
+## Ids of the returned reactions, in order.
+func _ids(reactions: Array) -> Array:
+	var ids: Array = []
+	for reaction in reactions:
+		ids.append(str(reaction.get("id", "")))
+	return ids
+
+
+## The single expected detail line for a match.
+func _detail(slot: int, species: String, label: String, value: int) -> String:
+	return "slot %d %s %s %d" % [slot, species, label, value]
 
 
 func _temp_dir() -> String:
@@ -147,178 +212,241 @@ func test_reset_run_permits_another_trigger() -> void:
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 
 
-# --- battle-scoped: any player unit metric exactly 67 ---
+# --- 8. battle-scoped: any player unit metric exactly <value> ---
+#
+# Every test below loops over BATTLE_CASES, so each battle reaction gets the same
+# coverage. The `label` argument on assertions names the case that failed.
 
-const CINNABARK := "monster.name.cinnabark"
-
-
-func _battle(team: Array, units: Array, battle_over: bool = true) -> Dictionary:
-	return {
-		"kind": "battle",
-		"team": team,
-		"battle_units": units,
-		"battle_over": battle_over,
-	}
-
-
-func _unit(slot: int, metrics: Dictionary, team_id: int = 0) -> Dictionary:
-	var unit := {"team_id": team_id, "slot_index": slot}
-	unit.merge(metrics, true)
-	return unit
-
-
-func test_battle_damage_67_triggers_with_unit_and_metric() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var earned: Array = evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0})]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
-		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
+func test_battle_each_metric_triggers_for_every_reaction() -> void:
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		for metric in BATTLE_METRICS:
+			var label := "%s %s" % [case["id"], metric["key"]]
+			var evaluator = _new_evaluator()
+			var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+				_unit(0, {str(metric["key"]): value}),
+			]))
+			assert_eq(earned.size(), 1, label)
+			if earned.size() == 1:
+				assert_eq(str(earned[0].get("id", "")), str(case["id"]), label)
+				assert_eq(
+					str(earned[0].get("detail", "")),
+					_detail(0, CINNABARK, str(metric["label"]), value),
+					label
+				)
 
 
-func test_battle_each_metric_67_triggers() -> void:
-	for metric in ["damage_dealt", "healing_done", "shield_granted", "burn_inflicted", "poison_inflicted", "shock_inflicted"]:
-		var evaluator = _new_evaluator()
-		var team := [{"name_key": CINNABARK, "level": 3}]
-		var earned: Array = evaluator.poll_battle(_battle(team, [_unit(0, {metric: 67})]))
-		assert_eq(earned.size(), 1, "metric %s should trigger" % metric)
-
-
-func test_battle_metric_66_and_68_do_not_trigger() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 66.0})])))
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 68.0})])))
+func test_battle_near_misses_do_not_trigger() -> void:
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		for delta in [-1, 1]:
+			var evaluator = _new_evaluator()
+			assert_empty(
+				evaluator.poll_battle(_battle(_team_one(), [
+					_unit(0, {"damage_dealt": value + delta}),
+				])),
+				"%s %d" % [case["id"], value + delta]
+			)
 
 
 func test_battle_enemy_side_ignored() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0}, 1)])))
+	for case in BATTLE_CASES:
+		var evaluator = _new_evaluator()
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [
+				_unit(0, {"damage_dealt": int(case["value"])}, 1),
+			])),
+			str(case["id"])
+		)
 
 
 func test_battle_repeated_polls_do_not_retrigger() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-	assert_empty(evaluator.poll_battle(snapshot))
-	assert_empty(evaluator.poll_battle(snapshot))
+	for case in BATTLE_CASES:
+		var evaluator = _new_evaluator()
+		var snapshot := _battle(_team_one(), [_unit(0, {"damage_dealt": int(case["value"])})])
+		assert_eq(evaluator.poll_battle(snapshot).size(), 1, str(case["id"]))
+		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
+		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
 
 
-func test_battle_multiple_units_fire_once_for_lowest_slot() -> void:
-	var evaluator = _new_evaluator()
-	var team := [
-		{"name_key": CINNABARK, "level": 3},
-		{"name_key": "monster.name.rhizuka", "level": 3},
-	]
-	var earned: Array = evaluator.poll_battle(_battle(team, [
-		_unit(0, {"damage_dealt": 67.0}),
-		_unit(1, {"healing_done": 67.0}),
-	]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
-
-
-func test_battle_lowest_slot_wins_regardless_of_unit_order() -> void:
-	var evaluator = _new_evaluator()
-	var team := [
-		{"name_key": CINNABARK, "level": 3},
-		{"name_key": "monster.name.rhizuka", "level": 3},
-	]
-	# Slot 3 is listed first but slot 1 is lower, so slot 1 wins.
-	var earned: Array = evaluator.poll_battle(_battle(team, [
-		_unit(3, {"damage_dealt": 67.0}),
-		_unit(1, {"healing_done": 67.0}),
-	]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), "slot 1 monster.name.rhizuka heal 67")
+func test_battle_lowest_slot_wins() -> void:
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		# Slot 2 is listed first but slot 1 is lower, so slot 1 wins.
+		var earned: Array = evaluator.poll_battle(_battle(_team_two(), [
+			_unit(2, {"damage_dealt": value}),
+			_unit(1, {"healing_done": value}),
+		]))
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(1, RHIZUKA, "heal", value),
+				str(case["id"])
+			)
 
 
 func test_battle_same_unit_multiple_metrics_fire_once_for_first_metric() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var earned: Array = evaluator.poll_battle(_battle(team, [
-		_unit(0, {"damage_dealt": 67.0, "shield_granted": 67.0}),
-	]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), "slot 0 %s damage 67" % CINNABARK)
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+			_unit(0, {"damage_dealt": value, "shield_granted": value}),
+		]))
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(0, CINNABARK, "damage", value),
+				str(case["id"])
+			)
 
 
 func test_battle_fires_once_even_with_many_matches() -> void:
-	var evaluator = _new_evaluator()
-	var team := [
-		{"name_key": CINNABARK, "level": 3},
-		{"name_key": "monster.name.rhizuka", "level": 3},
-		{"name_key": "monster.name.onsetra", "level": 3},
-	]
-	var snapshot := _battle(team, [
-		_unit(0, {"damage_dealt": 67.0, "healing_done": 67.0}),
-		_unit(1, {"shield_granted": 67.0, "burn_inflicted": 67}),
-		_unit(2, {"poison_inflicted": 67, "shock_inflicted": 67}),
-	])
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-	assert_empty(evaluator.poll_battle(snapshot))
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		var snapshot := _battle(_team_two(), [
+			_unit(0, {"damage_dealt": value, "healing_done": value}),
+			_unit(1, {"shield_granted": value}),
+		])
+		var earned: Array = evaluator.poll_battle(snapshot)
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(0, CINNABARK, "damage", value),
+				str(case["id"])
+			)
+		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
+
+
+func test_battle_mid_fight_snapshot_does_not_trigger() -> void:
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": value})], false)),
+			str(case["id"])
+		)
+		# The same totals at battle_over do trigger.
+		assert_eq(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": value})])).size(),
+			1,
+			str(case["id"])
+		)
+
+
+func test_battle_missing_battle_over_does_not_trigger() -> void:
+	for case in BATTLE_CASES:
+		var evaluator = _new_evaluator()
+		var snapshot := {
+			"kind": "battle",
+			"team": _team_one(),
+			"battle_units": [_unit(0, {"damage_dealt": int(case["value"])})],
+		}
+		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
 
 
 func test_battle_reset_battle_permits_another_trigger() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-	evaluator.reset_battle()
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	for case in BATTLE_CASES:
+		var evaluator = _new_evaluator()
+		var snapshot := _battle(_team_one(), [_unit(0, {"damage_dealt": int(case["value"])})])
+		assert_eq(evaluator.poll_battle(snapshot).size(), 1, str(case["id"]))
+		evaluator.reset_battle()
+		assert_eq(evaluator.poll_battle(snapshot).size(), 1, str(case["id"]))
 
 
 func test_battle_reset_run_clears_battle_tracking() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})])
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-	evaluator.reset_run()
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	for case in BATTLE_CASES:
+		var evaluator = _new_evaluator()
+		var snapshot := _battle(_team_one(), [_unit(0, {"damage_dealt": int(case["value"])})])
+		assert_eq(evaluator.poll_battle(snapshot).size(), 1, str(case["id"]))
+		evaluator.reset_run()
+		assert_eq(evaluator.poll_battle(snapshot).size(), 1, str(case["id"]))
 
 
 func test_battle_missing_or_invalid_metrics_ignored() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {})])))
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": null})])))
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": "67"})])))
-	assert_empty(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": true})])))
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {})])), str(case["id"]))
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": null})])),
+			str(case["id"])
+		)
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": str(value)})])),
+			str(case["id"])
+		)
+		assert_empty(
+			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": true})])),
+			str(case["id"])
+		)
 
 
 func test_battle_empty_snapshot_does_not_trigger() -> void:
 	assert_empty(_new_evaluator().poll_battle({}))
 
 
-func test_battle_mid_fight_snapshot_does_not_trigger() -> void:
-	# Only the final battle totals count; an in-progress battle never matches.
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var snapshot := _battle(team, [_unit(0, {"damage_dealt": 67.0})], false)
-	assert_empty(evaluator.poll_battle(snapshot))
-	# The same totals at battle_over do trigger.
-	assert_eq(evaluator.poll_battle(_battle(team, [_unit(0, {"damage_dealt": 67.0})])).size(), 1)
-
-
-func test_battle_missing_battle_over_does_not_trigger() -> void:
-	var evaluator = _new_evaluator()
-	var team := [{"name_key": CINNABARK, "level": 3}]
-	var snapshot := {"kind": "battle", "team": team, "battle_units": [_unit(0, {"damage_dealt": 67.0})]}
-	assert_empty(evaluator.poll_battle(snapshot))
-
-
 func test_battle_unknown_species_logs_question_mark() -> void:
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll_battle(_battle([], [_unit(3, {"damage_dealt": value})]))
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(3, "?", "damage", value),
+				str(case["id"])
+			)
+
+
+# --- 8b. battle reactions are tracked independently ---
+
+func test_battle_all_reactions_fire_in_one_battle() -> void:
 	var evaluator = _new_evaluator()
-	var earned: Array = evaluator.poll_battle(_battle([], [_unit(3, {"damage_dealt": 67.0})]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), "slot 3 ? damage 67")
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": RHIZUKA, "level": 3},
+		{"name_key": "monster.name.onsetra", "level": 3},
+	]
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(0, {"damage_dealt": 67}),
+		_unit(1, {"healing_done": 420}),
+		_unit(2, {"shield_granted": 666}),
+	]))
+	assert_eq(earned.size(), 3)
+	var ids := _ids(earned)
+	assert_true(ids.has(SIX_SEVEN))
+	assert_true(ids.has(FOUR_TWENTY))
+	assert_true(ids.has(SIX_SIX_SIX))
+
+
+func test_battle_same_unit_multiple_values_fire_all() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"damage_dealt": 67, "shield_granted": 420, "burn_inflicted": 666}),
+	]))
+	assert_eq(earned.size(), 3)
+	var ids := _ids(earned)
+	assert_true(ids.has(SIX_SEVEN))
+	assert_true(ids.has(FOUR_TWENTY))
+	assert_true(ids.has(SIX_SIX_SIX))
+
+
+func test_battle_reactions_do_not_trigger_on_run_snapshot() -> void:
+	# Battle reactions are battle-only: lives/wins never trigger them. (6/7 still
+	# triggers six_seven's run condition, so assert on ids, not emptiness.)
+	var evaluator = _new_evaluator()
+	for snapshot in [_snap(6, 7), _snap(4, 20), _snap(666, 666)]:
+		var ids := _ids(evaluator.poll(snapshot))
+		assert_false(ids.has(FOUR_TWENTY))
+		assert_false(ids.has(SIX_SIX_SIX))
+	assert_eq(evaluator.occurrence_count(FOUR_TWENTY), 0)
+	assert_eq(evaluator.occurrence_count(SIX_SIX_SIX), 0)
 
 
 # --- 9. achievement completion state does not suppress reactions ---
