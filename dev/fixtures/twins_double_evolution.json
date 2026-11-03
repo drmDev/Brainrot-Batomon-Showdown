@@ -13,10 +13,7 @@
 			"kind": "run",
 			"trainer_id": "twins",
 			"current_round": 3,
-			"team": [
-				{"name_key": "monster.name.beetdown", "level": 3},
-				{"name_key": "monster.name.beetdown", "level": 3}
-			],
+			"team": [{"name_key": "monster.name.beetdown", "level": 3}],
 			"bench": [],
 			"expect": ["oh_yeah"]
 		}

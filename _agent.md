@@ -98,14 +98,15 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. |
 | `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, and toast layout metrics. |
 | `hud/toast_preview_panel.gd` | Dev-only preview button/panel: compact dropdown of registered toasts, Play, and Close. |
-| `notifications/toast_catalog.gd` | Builds preview entries from the achievement/reaction registries and duplicate-allowed requests. |
+| `notifications/toast_catalog.gd` | Builds preview entries from the achievement/reaction registries and duplicate-allowed requests; reaction titles and descriptions come from `reaction_definitions.gd`. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
-| `audio/reaction_sounds.gd` | Table-driven reaction audio (`REACTION_SOUNDS`); one row per reaction, lazy per-file players. |
+| `audio/reaction_sounds.gd` | Reaction audio derived from each definition's `sound` block; lazy per-file players. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
-| `reactions/reaction_evaluator.gd` | Rules only: `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
-| `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast, and forwards the id to the sound sink. |
+| `reactions/reaction_definitions.gd` | The single source of truth for reactions: `DEFINITIONS` (id, title, optional message/sound, triggers), the run/outcome field registry, battle metric map, and comparison ops. Adding a reaction is one block here. |
+| `reactions/reaction_evaluator.gd` | Rules only: evaluates `DEFINITIONS` from snapshots. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
+| `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast (title from `reaction_definitions.gd`), and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_definitions`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
@@ -132,10 +133,12 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 - Persistence must not depend on the toast host existing.
 - Call `reset_run()` at verified run transitions (inferred in `mod_main` from `run_id`, then run object instance, trainer, and day regression). `run_id` is the primary identity: the game promotes `RunManager.data` to a new RunData object when a battle starts, so instance comparison alone fires a false reset at every battle. An unavailable run does not clear tracking; the comparison on return detects a new run.
 - Reactions must not read the achievement store or depend on achievement completion.
+- Reaction definitions live in `reactions/reaction_definitions.gd`. Adding a reaction is one block there; the evaluator, toast titles, sounds, and preview descriptions all read from it. Do not add per-reaction tables elsewhere. `tests/test_reaction_definitions.gd` validates the schema and generates a match/boundary-miss case per trigger.
+- Reaction conditions support int fields (`lives`, `day`, `wins`, `income`), the string field `trainer` (eq/ne only), `any` blocks, and `owns` (a team or bench unit matching a species and level comparison). `owns` is state-based, so the generated matrix covers it.
 - Toasts are always on.
 - Compact UI needs explicit font, stylebox, and popup overrides; see **UI Sizing and Theme Overrides**. Do not rely on Godot's default theme for HUD/tool controls.
 - Retain the 500 ms polling interval unless measurements justify changing it.
-- Tests must stay deterministic: inject `TestHelpers.TestClock` instead of relying on wall-clock time.
+- Tests must stay deterministic; the evaluators no longer use wall-clock time.
 - Keep `tests/fixtures/` and `dev/fixtures/` in sync with the fields the evaluator reads.
 - The user performs gameplay tests; report actual checks separately from pending runtime validation.
 

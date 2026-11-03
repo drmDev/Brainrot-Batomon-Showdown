@@ -8,7 +8,7 @@ extends RefCounted
 
 const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
-const ReactionPlayer = preload("../reactions/reaction_player.gd")
+const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
 
 const KIND_ACHIEVEMENT := NotificationRequest.KIND_ACHIEVEMENT
@@ -66,46 +66,18 @@ static func find(all_entries: Array, kind: String, id: String) -> Dictionary:
 	return {}
 
 
-## Append one reaction entry unless its id was already registered.
+## Append one reaction entry unless its id was already registered. The title and
+## description come from the reaction definition, so the preview cannot drift.
 static func _append_reaction(out: Array, seen: Dictionary, reaction, scope: String) -> void:
 	var id := str(reaction.get("id", ""))
 	if id.is_empty() or seen.has(id):
 		return
 	seen[id] = true
-	var title := str(ReactionPlayer.REACTION_TITLES.get(id, id))
+	var title := ReactionDefinitions.title_for(id)
 	out.append({
 		"kind": KIND_REACTION,
 		"id": id,
 		"label": "Reaction - %s" % title,
 		"title": title,
-		"description": _reaction_description(reaction, scope),
+		"description": ReactionDefinitions.describe_trigger(reaction),
 	})
-
-
-## Representative detail text for a reaction preview. Run reactions mirror the
-## [Lives, Day, Wins] / income triggers; outcome reactions show their final totals;
-## battle reactions show the threshold.
-static func _reaction_description(reaction: Dictionary, scope: String) -> String:
-	if scope == ReactionEvaluator.SCOPE_RUN:
-		var parts: PackedStringArray = []
-		if reaction.has("lives"):
-			parts.append("Lives %d" % int(reaction.get("lives")))
-		if reaction.has("day"):
-			parts.append("Day %d" % int(reaction.get("day")))
-		if reaction.has("wins"):
-			parts.append("Wins %d" % int(reaction.get("wins")))
-		if reaction.has("income"):
-			if str(reaction.get("income_comparison", ReactionEvaluator.COMPARISON_EQUALS)) == ReactionEvaluator.COMPARISON_GREATER_THAN:
-				parts.append("Income > %d" % int(reaction.get("income")))
-			else:
-				parts.append("Income %d" % int(reaction.get("income")))
-		return ", ".join(parts)
-	if scope == ReactionEvaluator.SCOPE_OUTCOME:
-		return "Wins %d, Lives %d" % [
-			int(reaction.get("wins", 0)),
-			int(reaction.get("lives", 0)),
-		]
-	var value := int(reaction.get("value", 0))
-	if str(reaction.get("comparison", ReactionEvaluator.COMPARISON_EQUALS)) == ReactionEvaluator.COMPARISON_GREATER_THAN:
-		return "Battle total > %d" % value
-	return "Battle total %d" % value

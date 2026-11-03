@@ -12,23 +12,14 @@ const TWINS := "twins"
 const OTHER := "musician"
 
 const RHIZUKA := "monster.name.rhizuka"
-const BEETBUD := "monster.name.beetbud"
 const BEETDOWN := "monster.name.beetdown"
-const FRILLET := "monster.name.frillet"
 const DEWLOTL := "monster.name.dewlotl"
 const CINNABARK := "monster.name.cinnabark"
 
-# Documented tuning values. Pinned here so changing the evaluator constants is an
-# intentional, reviewable change (see test_tuning_constants_match_documented_values).
-const EXPECTED_ARM_WINDOW_MS := 2000
 
 
-## Build an evaluator. Pass a TestHelpers.TestClock to make time deterministic;
-## otherwise the evaluator falls back to the engine clock.
-func _new_evaluator(clock = null):
-	if clock == null:
-		return AchievementEvaluator.new()
-	return AchievementEvaluator.new(clock.now)
+func _new_evaluator():
+	return AchievementEvaluator.new()
 
 
 ## Assert exactly one achievement was earned and that its id matches. Guarded so an
@@ -88,65 +79,55 @@ func test_gentleman_awards_only_once() -> void:
 	assert_empty(evaluator.poll(run))
 
 
-# --- Twins: evolution achievements ---
+# --- Twins: two level-3 evolved units ---
 
-func test_twins_same_poll_double_beetdown_awards_oh_yeah() -> void:
+func test_twins_level3_dewlotl_awards_mudkipz() -> void:
 	var evaluator = _new_evaluator()
-	# Poll 1: level-2 Beetbud present, no Beetdown yet -> arms.
-	var run1 = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETBUD, 2)])
-	assert_empty(evaluator.poll(run1))
-	# Poll 2: two level-3 Beetdowns appear -> award.
-	var run2 = TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-	])
-	var earned: Array = evaluator.poll(run2)
-	assert_single_achievement(earned, "oh_yeah")
+	var run = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(DEWLOTL, 3)])
+	assert_single_achievement(evaluator.poll(run), "herd_u_liek_mudkipz")
 
 
-func test_twins_multi_poll_double_dewlotl_awards_mudkipz() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	var run1 = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(FRILLET, 2)])
-	assert_empty(evaluator.poll(run1))
-	# First Dewlotl appears on the next poll.
-	clock.advance(500)
-	var run2 = TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(FRILLET, 2),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	])
-	assert_empty(evaluator.poll(run2))
-	# Second Dewlotl appears on the following poll -> award.
-	clock.advance(500)
-	var run3 = TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	])
-	var earned: Array = evaluator.poll(run3)
-	assert_single_achievement(earned, "herd_u_liek_mudkipz")
+func test_twins_single_level3_evolved_awards() -> void:
+	var evaluator = _new_evaluator()
+	var run = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETDOWN, 3)])
+	assert_single_achievement(evaluator.poll(run), "oh_yeah")
 
 
-func test_twins_no_pre_evolution_does_not_award() -> void:
+func test_twins_level2_evolved_does_not_award() -> void:
 	var evaluator = _new_evaluator()
 	var run = TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
+		TestHelpers.monster_snapshot(BEETDOWN, 2),
+		TestHelpers.monster_snapshot(BEETDOWN, 2),
 	])
 	assert_empty(evaluator.poll(run))
 
 
-func test_twins_pre_evolution_without_evolution_does_not_award() -> void:
+func test_twins_bench_counts() -> void:
 	var evaluator = _new_evaluator()
-	var run = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETBUD, 2)])
+	var run = TestHelpers.run_snapshot(TWINS, 3, [], [
+		TestHelpers.monster_snapshot(DEWLOTL, 3),
+		TestHelpers.monster_snapshot(DEWLOTL, 3),
+	])
+	assert_single_achievement(evaluator.poll(run), "herd_u_liek_mudkipz")
+
+
+func test_twins_other_trainer_does_not_award() -> void:
+	var evaluator = _new_evaluator()
+	var run = TestHelpers.run_snapshot(OTHER, 3, [
+		TestHelpers.monster_snapshot(BEETDOWN, 3),
+		TestHelpers.monster_snapshot(BEETDOWN, 3),
+	])
 	assert_empty(evaluator.poll(run))
 
 
-func test_twins_single_evolution_does_not_award() -> void:
+func test_twins_awards_only_once() -> void:
 	var evaluator = _new_evaluator()
-	var run1 = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETBUD, 2)])
-	assert_empty(evaluator.poll(run1))
-	var run2 = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETDOWN, 3)])
-	assert_empty(evaluator.poll(run2))
+	var run = TestHelpers.run_snapshot(TWINS, 3, [
+		TestHelpers.monster_snapshot(BEETDOWN, 3),
+		TestHelpers.monster_snapshot(BEETDOWN, 3),
+	])
+	assert_eq(evaluator.poll(run).size(), 1)
+	assert_empty(evaluator.poll(run))
 
 
 # --- poll_battle: "Big Dog, Best Dog" ---
@@ -307,109 +288,27 @@ func test_reset_run_clears_gentleman_flag() -> void:
 	assert_eq(evaluator.poll(run).size(), 1)
 
 
-func test_reset_run_clears_twins_baseline() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(FRILLET, 2)])))
-	evaluator.reset_run()
-	# The armed baseline is gone, so a double evolution no longer awards.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	])))
-
-
-# --- Twins: arm-window and baseline semantics (deterministic clock) ---
-
-func test_twins_arm_window_expires_without_award() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	var run_armed = TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(FRILLET, 2)])
-	assert_empty(evaluator.poll(run_armed))
-	clock.advance(EXPECTED_ARM_WINDOW_MS + 1)
-	# One evolution after the window closes: the arm expires, no award.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(DEWLOTL, 3)])))
-	# A second evolution later still does not award because the arm is gone.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	])))
-
-
-func test_twins_arm_window_refreshes_while_pre_evolution_present() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	var pre = TestHelpers.monster_snapshot(FRILLET, 2)
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [pre])))
-	clock.advance(EXPECTED_ARM_WINDOW_MS - 500)
-	# Still present near the edge: the window refreshes.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [pre])))
-	clock.advance(EXPECTED_ARM_WINDOW_MS - 500)
-	# Past the original expiry but inside the refreshed window: arm survives.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [pre])))
-	clock.advance(1)
-	var earned: Array = evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	]))
-	assert_single_achievement(earned, "herd_u_liek_mudkipz")
-
-
-func test_twins_same_poll_baseline_from_prior_poll_awards() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	# Prior poll: one evolved unit present, no pre-evolution. Baseline becomes 1.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(BEETDOWN, 3)])))
-	clock.advance(100)
-	# The pre-evolution appears with three evolved units: 3 >= 1 + 2.
-	var earned: Array = evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(BEETBUD, 2),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-	]))
-	assert_single_achievement(earned, "oh_yeah")
-
-
-func test_twins_first_poll_pre_and_double_evolution_does_not_award() -> void:
-	# Documents the current contract: with no prior baseline, a double landing in
-	# the same poll as the pre-evolution is not recognized. Arming assumes the game
-	# spreads the double across polls (see the evaluator's runtime-log note).
-	# Revisit if gameplay shows the double can complete within one poll.
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
+func test_reset_run_clears_twins_award() -> void:
+	var evaluator = _new_evaluator()
 	var run = TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(BEETBUD, 2),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
-		TestHelpers.monster_snapshot(BEETDOWN, 3),
+		TestHelpers.monster_snapshot(DEWLOTL, 3),
+		TestHelpers.monster_snapshot(DEWLOTL, 3),
 	])
-	assert_empty(evaluator.poll(run))
+	assert_eq(evaluator.poll(run).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll(run).size(), 1)
 
 
-func test_twins_other_trainer_resets_evolution_state() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(FRILLET, 2)])))
-	# A non-Gentleman, non-Twins run clears the armed baseline.
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(OTHER, 3, [])))
-	var earned: Array = evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
+func test_twins_gentleman_run_clears_twins_award() -> void:
+	var evaluator = _new_evaluator()
+	var run = TestHelpers.run_snapshot(TWINS, 3, [
 		TestHelpers.monster_snapshot(DEWLOTL, 3),
 		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	]))
-	assert_empty(earned)
-
-
-func test_twins_gentleman_run_resets_evolution_state() -> void:
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = _new_evaluator(clock)
-	assert_empty(evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [TestHelpers.monster_snapshot(FRILLET, 2)])))
-	# Gentleman is not Twins: poll() clears evolution state at the end.
+	])
+	assert_eq(evaluator.poll(run).size(), 1)
+	# Gentleman is not Twins: poll() clears the Twins award state.
 	assert_empty(evaluator.poll(TestHelpers.run_snapshot(GENTLEMAN, 3, [])))
-	var earned: Array = evaluator.poll(TestHelpers.run_snapshot(TWINS, 3, [
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-		TestHelpers.monster_snapshot(DEWLOTL, 3),
-	]))
-	assert_empty(earned)
+	assert_eq(evaluator.poll(run).size(), 1)
 
 
 # --- poll_battle: Big Dog edge cases ---
@@ -561,16 +460,15 @@ func test_achievement_ids_unique_and_well_formed() -> void:
 
 func test_evolution_achievement_pairs_are_complete() -> void:
 	for def in AchievementEvaluator.EVOLUTION_ACHIEVEMENTS:
-		assert_false(str(def.get("pre_key", "")).is_empty(), "missing pre_key")
 		assert_false(str(def.get("post_key", "")).is_empty(), "missing post_key")
 		var achievement: Dictionary = def.get("achievement", {})
 		assert_false(str(achievement.get("id", "")).is_empty(), "missing achievement id")
 
 
 func test_tuning_constants_match_documented_values() -> void:
-	assert_eq(AchievementEvaluator.EVOLUTION_ARM_WINDOW_MS, EXPECTED_ARM_WINDOW_MS)
+	assert_eq(AchievementEvaluator.EVOLVED_LEVEL, 3)
+	assert_eq(AchievementEvaluator.EVOLUTION_COPIES, 1)
 	assert_eq(AchievementEvaluator.GENTLEMAN_DAY_LIMIT, 5)
 	assert_eq(AchievementEvaluator.RHIZUKA_MIN_LEVEL, 2)
-	assert_eq(AchievementEvaluator.PRE_EVOLVE_LEVEL, 2)
 	assert_eq(AchievementEvaluator.BIG_DOG_SHIELD_THRESHOLD, 1000000.0)
 	assert_eq(AchievementEvaluator.PLAYER_TEAM_ID, 0)

@@ -21,22 +21,6 @@ class FakeObject:
 		return _props.has(property)
 
 
-## Controllable clock for deterministic time-based tests. Pass `clock.now` as the
-## evaluator's second `_init` argument, then call advance() to move time forward.
-class TestClock:
-	extends RefCounted
-	var value: int
-
-	func _init(start_ms: int = 0) -> void:
-		value = start_ms
-
-	func advance(ms: int) -> void:
-		value += ms
-
-	func now() -> int:
-		return value
-
-
 ## Property probe mirroring mod_main._has_property semantics for FakeObject and
 ## real Objects alike. Pass as the `_has_prop` Callable to the evaluator.
 static func probe(obj, property: String) -> bool:

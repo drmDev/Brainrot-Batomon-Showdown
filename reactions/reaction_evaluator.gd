@@ -13,6 +13,9 @@ extends RefCounted
 ##
 ## Each returned reaction is {"id": String, "detail": String}.
 ##
+## Reaction definitions live in reactions/reaction_definitions.gd. This file only
+## evaluates them; adding a reaction is one block in that file.
+##
 ## Occurrence semantics:
 ## - Run-scoped: triggers once per run, the first time a matching snapshot is seen.
 ##   Repeated matching polls, leaving and returning, and a menu round-trip (run
@@ -20,160 +23,38 @@ extends RefCounted
 ## - Battle-scoped: evaluated only on the FINAL battle totals (battle_over), never
 ##   mid-fight. Each battle reaction fires at most ONCE per battle, even when several
 ##   units qualify: the lowest slot wins, and within that slot the first metric in
-##   BATTLE_METRICS order. Different battle reactions are tracked independently, so
+##   BATTLE_METRIC_ORDER. Different battle reactions are tracked independently, so
 ##   several of them can fire in the same battle.
+## - Outcome-scoped: evaluated only at battle_over from the battle snapshot's
+##   `outcome` (the committed promoted-run totals). Occurrence is run-scoped, so
+##   reset_battle() does not re-arm it.
 ## - An empty snapshot does NOT reset anything.
 ##
 ## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
 ## can allow a reaction to trigger again within a continuing run.
-##
-## Reactions:
-## - "six_seven" / "six_nine"
-##   Run condition: remaining Lives == 6 AND the shop's [Lives, Day, Wins] layout
-##     reaches the target: Day 7 or Wins 7 for six_seven; Day 9 or Wins 9 for
-##     six_nine. Fields: run.lives, run.current_round (Day), run.current_wins.
-##     A run starts with 10 lives, so this is 4 lives lost. Missing, null, or
-##     non-numeric values never match.
-##   Income condition: the derived shop income equals 67 (six_seven) or 69
-##     (six_nine). Income is NOT current gold; see
-##     game_snapshot_reader._read_income.
-##   Battle condition for six_seven: any player-side unit's FINAL battle total is
-##     exactly 67 on damage, heal, shield, burn, poison, or shock. six_nine uses the
-##     same rule for 69. Checked once the battle is over, not while it is running.
-##     All six are accumulated per-battle counters: damage_dealt, healing_done,
-##     shield_granted, burn_inflicted, poison_inflicted, shock_inflicted. The log
-##     names the species and the metric; only the lowest matching slot is reported.
-## - "four_twenty" / "six_six_six"
-##   Run income condition: shop income equals 420 (four_twenty) or 666 (six_six_six).
-##   Battle condition: any player-side unit's FINAL battle total is exactly 420 (or
-##     666) on one of the same six metrics. Same timing and reporting rules as
-##     six_seven's battle condition. These are rows in REACTIONS (income) and
-##     BATTLE_REACTIONS (unit totals).
-## - "over_9000"
-##   Run income condition: shop income is strictly greater than 9000.
-##   Battle condition: any player-side unit's FINAL battle total is strictly greater
-##     than 9000 on burn, poison, or shock. Damage, heal, and shield are NOT
-##     considered. 9000 itself does not fire; 9001 does. The log reports the actual
-##     total (e.g. "Furnadon poison 9002"), not the threshold.
-## - "flawless_victory"
-##   Battle-outcome condition: evaluated only at battle_over from the battle
-##     snapshot's `outcome` (the COMMITTED promoted-run totals, not the pre-battle
-##     replay copy): Wins == 10 AND Lives == 10. Fires once per run; reset_run()
-##     re-arms it, reset_battle() does not.
 
-const SIX_SEVEN_ID := "six_seven"
-const SIX_SEVEN_LIVES := 6
-const SIX_SEVEN_DAY := 7
-const SIX_SEVEN_WINS := 7
-
-const SIX_NINE_ID := "six_nine"
-const SIX_NINE_LIVES := 6
-const SIX_NINE_DAY := 9
-const SIX_NINE_WINS := 9
-
-const FOUR_TWENTY_ID := "four_twenty"
-const FOUR_TWENTY_VALUE := 420
-const SIX_SIX_SIX_ID := "six_six_six"
-const SIX_SIX_SIX_VALUE := 666
-const OVER_9000_ID := "over_9000"
-const OVER_9000_THRESHOLD := 9000
-
-const FLAWLESS_VICTORY_ID := "flawless_victory"
-const FLAWLESS_VICTORY_WINS := 10
-const FLAWLESS_VICTORY_LIVES := 10
-
-# How a battle reaction compares a unit's total to its `value`.
-const COMPARISON_EQUALS := "eq"          # total == value
-const COMPARISON_GREATER_THAN := "gt"    # total > value
+const ReactionDefinitions = preload("reaction_definitions.gd")
 
 # Evaluation scope labels for registered_rows() (dev tooling / catalog).
-const SCOPE_RUN := "run"
-const SCOPE_BATTLE := "battle"
-const SCOPE_OUTCOME := "outcome"
+const SCOPE_RUN := ReactionDefinitions.SCOPE_RUN
+const SCOPE_BATTLE := ReactionDefinitions.SCOPE_BATTLE
+const SCOPE_OUTCOME := ReactionDefinitions.SCOPE_OUTCOME
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
-## Run-scoped reaction table: one row per reaction. A row matches when:
-## - `lives` matches AND (`day` or `wins` matches), using the shop's
-##   [Lives, Day, Wins] layout, OR
-## - `income` matches, using `income_comparison` (eq by default, gt optional).
-## Add rows here rather than new classes; the condition code stays in _match_detail().
-const REACTIONS := [
-	{
-		"id": SIX_SEVEN_ID,
-		"lives": SIX_SEVEN_LIVES,
-		"day": SIX_SEVEN_DAY,
-		"wins": SIX_SEVEN_WINS,
-		"income": 67,
-	},
-	{
-		"id": SIX_NINE_ID,
-		"lives": SIX_NINE_LIVES,
-		"day": SIX_NINE_DAY,
-		"wins": SIX_NINE_WINS,
-		"income": 69,
-	},
-	{"id": FOUR_TWENTY_ID, "income": FOUR_TWENTY_VALUE},
-	{"id": SIX_SIX_SIX_ID, "income": SIX_SIX_SIX_VALUE},
-	{
-		"id": OVER_9000_ID,
-		"income": OVER_9000_THRESHOLD,
-		"income_comparison": COMPARISON_GREATER_THAN,
-	},
-]
 
-## Battle metrics checked against each battle reaction's value, in log order. All are
-## accumulated per-battle counters on the unit record.
-const BATTLE_METRICS := [
-	{"key": "damage_dealt", "label": "damage"},
-	{"key": "healing_done", "label": "heal"},
-	{"key": "shield_granted", "label": "shield"},
-	{"key": "burn_inflicted", "label": "burn"},
-	{"key": "poison_inflicted", "label": "poison"},
-	{"key": "shock_inflicted", "label": "shock"},
-]
-
-## Battle-scoped reaction table: one row per reaction. Each row is tracked
-## independently, so several can fire in the same battle. Adding a reaction is one row.
-##
-## Row fields:
-##   id          reaction id (required)
-##   value       the final per-battle total to compare against (required)
-##   comparison  COMPARISON_EQUALS (default) or COMPARISON_GREATER_THAN
-##   metrics     optional list of BATTLE_METRICS keys to consider; default is all six
-const BATTLE_REACTIONS := [
-	{"id": SIX_SEVEN_ID, "value": 67},
-	{"id": SIX_NINE_ID, "value": 69},
-	{"id": FOUR_TWENTY_ID, "value": FOUR_TWENTY_VALUE},
-	{"id": SIX_SIX_SIX_ID, "value": SIX_SIX_SIX_VALUE},
-	{
-		"id": OVER_9000_ID,
-		"value": OVER_9000_THRESHOLD,
-		"comparison": COMPARISON_GREATER_THAN,
-		"metrics": ["burn_inflicted", "poison_inflicted", "shock_inflicted"],
-	},
-]
-
-## Battle-outcome reaction table: evaluated from the committed post-battle run,
-## only at battle_over. Rows: {"id", "wins", "lives"} exact values.
-## These are run-scoped occurrences (once per run), unlike BATTLE_REACTIONS
-## (once per battle).
-const BATTLE_OUTCOME_REACTIONS := [
-	{"id": FLAWLESS_VICTORY_ID, "wins": FLAWLESS_VICTORY_WINS, "lives": FLAWLESS_VICTORY_LIVES},
-]
-
-
-## Every registered reaction row with its evaluation scope. Dev tooling and schema
-## tests iterate this so a new table or row cannot be forgotten.
+## Every registered trigger with its evaluation scope. Dev tooling and schema
+## tests iterate this so a new definition cannot be forgotten.
 static func registered_rows() -> Array:
 	var rows: Array = []
-	for reaction in REACTIONS:
-		rows.append({"scope": SCOPE_RUN, "row": reaction})
-	for reaction in BATTLE_REACTIONS:
-		rows.append({"scope": SCOPE_BATTLE, "row": reaction})
-	for reaction in BATTLE_OUTCOME_REACTIONS:
-		rows.append({"scope": SCOPE_OUTCOME, "row": reaction})
+	for definition in ReactionDefinitions.DEFINITIONS:
+		var id := str(definition.get("id", ""))
+		for trigger in definition.get("triggers", []):
+			var row: Dictionary = trigger.duplicate()
+			row["id"] = id
+			rows.append({"scope": str(trigger.get("scope", "")), "row": row})
 	return rows
+
 
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
 var _occurrences: Dictionary = {}
@@ -187,21 +68,34 @@ func poll(run_snapshot: Dictionary) -> Array:
 	if run_snapshot.is_empty():
 		return triggered
 
-	for reaction in REACTIONS:
-		var id := str(reaction.get("id", ""))
+	for definition in ReactionDefinitions.DEFINITIONS:
+		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		var detail := _match_detail(reaction, run_snapshot)
-		if detail.is_empty():
+		var details: PackedStringArray = []
+		for trigger in definition.get("triggers", []):
+			if str(trigger.get("scope", "")) != SCOPE_RUN:
+				continue
+			var detail := _conditions_detail(
+				trigger.get("when", []),
+				run_snapshot,
+				ReactionDefinitions.FIELDS,
+			)
+			if not detail.is_empty():
+				details.append(detail)
+		if details.is_empty():
 			continue
 		_occurrences[id] = 1
-		triggered.append({"id": id, "detail": detail})
+		triggered.append({
+			"id": id,
+			"detail": _format_detail(definition, ", ".join(details)),
+		})
 	return triggered
 
 
-## Poll a completed battle snapshot. Returns at most one reaction per battle reaction
-## id: the lowest player-side slot with a metric satisfying that reaction's comparison.
-## Mid-battle snapshots never match.
+## Poll a completed battle snapshot. Returns at most one reaction per battle
+## reaction id: the lowest player-side slot with a metric satisfying that
+## reaction's comparison. Mid-battle snapshots never match.
 func poll_battle(battle_snapshot: Dictionary) -> Array:
 	var triggered: Array = []
 	if battle_snapshot.is_empty():
@@ -210,30 +104,33 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 		return triggered
 
 	var units = battle_snapshot.get("battle_units")
-	if not units is Array:
-		_poll_battle_outcomes(triggered, battle_snapshot)
-		return triggered
 	var team = battle_snapshot.get("team")
 	if not team is Array:
 		team = []
 
-	for reaction in BATTLE_REACTIONS:
-		var id := str(reaction.get("id", ""))
-		if id.is_empty() or _battle_fired.has(id):
-			continue
-		var found := _find_best_match(units, reaction)
-		if found.is_empty():
-			continue
-		_battle_fired[id] = true
-		var slot := int(found.get("slot", -1))
-		triggered.append({
-			"id": id,
-			"detail": "%s %s %d" % [
-				_species_display_name_at(team, slot),
-				str(found.get("label", "")),
-				int(found.get("value", 0)),
-			],
-		})
+	if units is Array:
+		for definition in ReactionDefinitions.DEFINITIONS:
+			var id := str(definition.get("id", ""))
+			if id.is_empty() or _battle_fired.has(id):
+				continue
+			for trigger in definition.get("triggers", []):
+				if str(trigger.get("scope", "")) != SCOPE_BATTLE:
+					continue
+				var found := _find_battle_match(units, trigger)
+				if found.is_empty():
+					continue
+				_battle_fired[id] = true
+				var detail := "%s %s %d" % [
+					_species_display_name_at(team, int(found.get("slot", -1))),
+					str(found.get("label", "")),
+					int(found.get("value", 0)),
+				]
+				triggered.append({
+					"id": id,
+					"detail": _format_detail(definition, detail),
+				})
+				break
+
 	_poll_battle_outcomes(triggered, battle_snapshot)
 	return triggered
 
@@ -245,21 +142,26 @@ func _poll_battle_outcomes(triggered: Array, battle_snapshot: Dictionary) -> voi
 	var outcome = battle_snapshot.get("outcome")
 	if not outcome is Dictionary:
 		return
-	var wins = outcome.get("wins")
-	var lives = outcome.get("lives")
-	if typeof(wins) != TYPE_INT or typeof(lives) != TYPE_INT:
-		return
-	for reaction in BATTLE_OUTCOME_REACTIONS:
-		var id := str(reaction.get("id", ""))
+	for definition in ReactionDefinitions.DEFINITIONS:
+		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		if int(wins) != int(reaction.get("wins")) or int(lives) != int(reaction.get("lives")):
-			continue
-		_occurrences[id] = 1
-		triggered.append({
-			"id": id,
-			"detail": "Wins %d, Lives %d" % [int(wins), int(lives)],
-		})
+		for trigger in definition.get("triggers", []):
+			if str(trigger.get("scope", "")) != SCOPE_OUTCOME:
+				continue
+			var detail := _conditions_detail(
+				trigger.get("when", []),
+				outcome,
+				ReactionDefinitions.OUTCOME_FIELDS,
+			)
+			if detail.is_empty():
+				continue
+			_occurrences[id] = 1
+			triggered.append({
+				"id": id,
+				"detail": _format_detail(definition, detail),
+			})
+			break
 
 
 ## Clear all tracking. Call at a verified run transition.
@@ -278,57 +180,148 @@ func occurrence_count(id: String) -> int:
 	return int(_occurrences.get(id, 0))
 
 
-## Detail line for a matching run reaction, or "" when nothing matches.
+## Apply a definition's optional message template to a generated detail line.
+func _format_detail(definition: Dictionary, detail: String) -> String:
+	var message := str(definition.get("message", ""))
+	if message.is_empty():
+		return detail
+	return message.replace("{detail}", detail)
+
+
+## "Sunsage level 3" when the owned team or bench contains a matching unit, else "".
+func _owns_detail(spec, snapshot: Dictionary) -> String:
+	if not spec is Dictionary:
+		return ""
+	var species := str(spec.get("species", ""))
+	var level_condition = spec.get("level")
+	for list_name in ["team", "bench"]:
+		var list = snapshot.get(list_name)
+		if not list is Array:
+			continue
+		for monster in list:
+			if not monster is Dictionary:
+				continue
+			if str(monster.get("name_key", "")) != species:
+				continue
+			var level = monster.get("level")
+			if typeof(level) != TYPE_INT:
+				continue
+			if level_condition is Array and level_condition.size() == 2:
+				if not _compare(int(level), str(level_condition[0]), int(level_condition[1])):
+					continue
+			return "%s level %d" % [_format_species_name(species), int(level)]
+	return ""
+
+
+## Detail line for a `when` list, or "" when the conditions do not match.
 ##
-## The [Lives, Day, Wins] condition and the income condition are independent
-## triggers. Numeric fields must be present integers; anything else (absent, null,
-## string, bool) does not match. When several triggers match at once, every matched
-## label is included in the detail.
-func _match_detail(reaction: Dictionary, run_snapshot: Dictionary) -> String:
+## Conditions are ANDed. A leaf contributes "<Label> <actual>" to the detail. An
+## `any` block matches when at least one leaf matches and contributes every
+## matching leaf, so "Lives 6, Day 7, Wins 7" is produced when both day and wins
+## match. Numeric fields must be present ints; anything else does not match.
+func _conditions_detail(conditions, snapshot: Dictionary, fields: Dictionary) -> String:
+	if not conditions is Array:
+		return ""
 	var parts: PackedStringArray = []
-	var lives = run_snapshot.get("lives")
-	var day = run_snapshot.get("current_round")
-	var wins = run_snapshot.get("current_wins")
-
-	if reaction.has("lives") and typeof(lives) == TYPE_INT and int(lives) == int(reaction.get("lives")):
-		var lives_added := false
-		if reaction.has("day") and typeof(day) == TYPE_INT and int(day) == int(reaction.get("day")):
-			parts.append("Lives %d" % int(lives))
-			parts.append("Day %d" % int(day))
-			lives_added = true
-		if reaction.has("wins") and typeof(wins) == TYPE_INT and int(wins) == int(reaction.get("wins")):
-			if not lives_added:
-				parts.append("Lives %d" % int(lives))
-			parts.append("Wins %d" % int(wins))
-
-	if reaction.has("income"):
-		var income = run_snapshot.get("income")
-		if typeof(income) == TYPE_INT and _income_matches(reaction, int(income)):
-			parts.append("Income %d" % int(income))
-
+	for condition in conditions:
+		if condition is Dictionary and condition.has("any"):
+			var any_list = condition["any"]
+			if not any_list is Array:
+				return ""
+			var any_parts: PackedStringArray = []
+			for sub in any_list:
+				if sub is Array:
+					var text := _leaf_detail(sub, snapshot, fields)
+					if not text.is_empty():
+						any_parts.append(text)
+			if any_parts.is_empty():
+				return ""
+			parts.append_array(any_parts)
+		elif condition is Dictionary and condition.has("owns"):
+			var text := _owns_detail(condition["owns"], snapshot)
+			if text.is_empty():
+				return ""
+			parts.append(text)
+		elif condition is Array:
+			var text := _leaf_detail(condition, snapshot, fields)
+			if text.is_empty():
+				return ""
+			parts.append(text)
+		else:
+			return ""
 	return ", ".join(parts)
 
 
-## Does the derived shop income satisfy the row's income condition?
-func _income_matches(reaction: Dictionary, income: int) -> bool:
-	var expected := int(reaction.get("income", 0))
-	var comparison := str(reaction.get("income_comparison", COMPARISON_EQUALS))
-	if comparison == COMPARISON_EQUALS:
-		return income == expected
-	if comparison == COMPARISON_GREATER_THAN:
-		return income > expected
-	push_warning("Brain Rot: unknown income reaction comparison '%s' for %s" % [
-		comparison,
-		str(reaction.get("id", "?")),
-	])
+## "<Label> <actual>" for a matching leaf, or "" when it does not match.
+func _leaf_detail(condition: Array, snapshot: Dictionary, fields: Dictionary) -> String:
+	if condition.size() != 3:
+		return ""
+	var field := str(condition[0])
+	var op := str(condition[1])
+	var info = fields.get(field)
+	if not info is Dictionary:
+		return ""
+	var key := str(info.get("key", ""))
+	var label := str(info.get("label", field))
+	if str(info.get("type", "int")) == "string":
+		var actual = snapshot.get(key)
+		if typeof(actual) != TYPE_STRING:
+			return ""
+		if not _compare_string(str(actual), op, str(condition[2])):
+			return ""
+		return "%s %s" % [label, str(actual)]
+	var actual = snapshot.get(key)
+	if typeof(actual) != TYPE_INT:
+		return ""
+	if not _compare(int(actual), op, int(condition[2])):
+		return ""
+	return "%s %d" % [label, int(actual)]
+
+
+## The one comparison implementation shared by every scope. Unknown ops warn and
+## never match, so a typo cannot silently behave as equality.
+func _compare(actual: int, op: String, expected: int) -> bool:
+	match op:
+		ReactionDefinitions.OP_EQUALS:
+			return actual == expected
+		ReactionDefinitions.OP_NOT_EQUALS:
+			return actual != expected
+		ReactionDefinitions.OP_GREATER_THAN:
+			return actual > expected
+		ReactionDefinitions.OP_GREATER_OR_EQUAL:
+			return actual >= expected
+		ReactionDefinitions.OP_LESS_THAN:
+			return actual < expected
+		ReactionDefinitions.OP_LESS_OR_EQUAL:
+			return actual <= expected
+	push_warning("Brain Rot: unknown reaction comparison '%s'" % op)
 	return false
 
 
-## Lowest player-side slot with a metric satisfying `reaction`, plus the first matching
-## metric label in BATTLE_METRICS order and the actual total. Returns {} when nothing
-## matches.
-func _find_best_match(units: Array, reaction: Dictionary) -> Dictionary:
-	var metrics := _metrics_for(reaction)
+## String comparison for string fields. Only eq/ne are meaningful.
+func _compare_string(actual: String, op: String, expected: String) -> bool:
+	match op:
+		ReactionDefinitions.OP_EQUALS:
+			return actual == expected
+		ReactionDefinitions.OP_NOT_EQUALS:
+			return actual != expected
+	push_warning("Brain Rot: unsupported string comparison '%s'" % op)
+	return false
+
+
+## Lowest player-side slot with a metric satisfying `trigger`, plus the first
+## matching metric label in BATTLE_METRIC_ORDER and the actual total. Returns {}
+## when nothing matches.
+func _find_battle_match(units: Array, trigger: Dictionary) -> Dictionary:
+	var total_condition = trigger.get("total")
+	if not total_condition is Array or total_condition.size() != 2:
+		return {}
+	var op := str(total_condition[0])
+	var expected := int(total_condition[1])
+	var metric_labels = trigger.get("metrics")
+	if not metric_labels is Array:
+		metric_labels = ReactionDefinitions.BATTLE_METRIC_ORDER
+
 	var best_slot := -1
 	var best_label := ""
 	var best_value := 0
@@ -345,61 +338,23 @@ func _find_best_match(units: Array, reaction: Dictionary) -> Dictionary:
 		# A lower slot already matched, so this unit cannot win.
 		if best_slot >= 0 and slot >= best_slot:
 			continue
-		for metric in metrics:
-			var total = _matching_total(unit, metric, reaction)
-			if total == null:
+		for label in ReactionDefinitions.BATTLE_METRIC_ORDER:
+			if not metric_labels.has(label):
 				continue
-			best_slot = slot
-			best_label = str(metric.get("label", ""))
-			best_value = int(total)
-			break
+			var key := str(ReactionDefinitions.BATTLE_METRICS.get(label, ""))
+			var value = unit.get(key)
+			# The reader emits floats for battle counters (e.g. heal=420.0), so
+			# accept both numeric types and compare the integer total.
+			if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+				continue
+			if _compare(int(value), op, expected):
+				best_slot = slot
+				best_label = label
+				best_value = int(value)
+				break
 	if best_slot < 0:
 		return {}
 	return {"slot": best_slot, "label": best_label, "value": best_value}
-
-
-## The metrics a reaction considers: its own `metrics` list when present, else all of
-## BATTLE_METRICS. Order always follows BATTLE_METRICS.
-func _metrics_for(reaction: Dictionary) -> Array:
-	var keys = reaction.get("metrics")
-	if not keys is Array:
-		# No filter on this row, so every battle metric is eligible.
-		return BATTLE_METRICS
-
-	var filtered: Array = []
-	for metric in BATTLE_METRICS:
-		if keys.has(str(metric.get("key", ""))):
-			filtered.append(metric)
-	return filtered
-
-
-## The unit's total for this metric when it satisfies the reaction, else null.
-## Non-numeric values never match.
-func _matching_total(unit: Dictionary, metric: Dictionary, reaction: Dictionary):
-	var value = unit.get(str(metric.get("key", "")))
-	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
-		return null
-
-	var total: int = int(value)
-	var expected: int = int(reaction.get("value", 0))
-	var comparison := str(reaction.get("comparison", COMPARISON_EQUALS))
-
-	if comparison == COMPARISON_EQUALS:
-		if total == expected:
-			return total
-		return null
-
-	if comparison == COMPARISON_GREATER_THAN:
-		if total > expected:
-			return total
-		return null
-
-	# A row with an unknown comparison is a table bug: never match, and say so.
-	push_warning("Brain Rot: unknown battle reaction comparison '%s' for %s" % [
-		comparison,
-		str(reaction.get("id", "?")),
-	])
-	return null
 
 
 ## Display name of the species in a team slot, or "Unknown" when unavailable.

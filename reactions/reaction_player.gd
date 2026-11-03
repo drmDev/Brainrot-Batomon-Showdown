@@ -10,16 +10,7 @@ extends RefCounted
 ##   e.g. "Brain Rot: REACTION | six_seven | Lives 6, Wins 7"
 
 const NotificationRequest = preload("../notifications/notification_request.gd")
-
-## Toast titles per reaction id. Unknown ids fall back to the id itself.
-const REACTION_TITLES := {
-	"six_seven": "6 7",
-	"six_nine": "6 9",
-	"four_twenty": "Blaze It",
-	"six_six_six": "Number of the Beast",
-	"over_9000": "It's Over 9000!",
-	"flawless_victory": "Flawless Victory",
-}
+const ReactionDefinitions = preload("reaction_definitions.gd")
 
 var _log_fn: Callable
 var _submit_fn: Callable
@@ -65,7 +56,7 @@ func _submit(id: String, detail: String) -> void:
 	_submit_fn.call(NotificationRequest.new(
 		NotificationRequest.KIND_REACTION,
 		id,
-		str(REACTION_TITLES.get(id, id)),
+		ReactionDefinitions.title_for(id),
 		detail,
 	))
 

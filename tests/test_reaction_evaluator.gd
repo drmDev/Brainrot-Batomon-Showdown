@@ -6,14 +6,16 @@ extends "test_runner.gd"
 ## (67, 69, 420, 666). Adding a value reaction means one row here, not a new test block.
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
+const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
 const AchievementStore = preload("../achievements/achievement_store.gd")
 
-const SIX_SEVEN := "six_seven"
-const SIX_NINE := "six_nine"
-const FOUR_TWENTY := "four_twenty"
-const SIX_SIX_SIX := "six_six_six"
-const OVER_9000 := "over_9000"
-const FLAWLESS_VICTORY := "flawless_victory"
+const SIX_SEVEN := ReactionDefinitions.SIX_SEVEN
+const SIX_NINE := ReactionDefinitions.SIX_NINE
+const FOUR_TWENTY := ReactionDefinitions.FOUR_TWENTY
+const SIX_SIX_SIX := ReactionDefinitions.SIX_SIX_SIX
+const OVER_9000 := ReactionDefinitions.OVER_9000
+const SEVEN_OR_MORE_LIVES := ReactionDefinitions.SEVEN_OR_MORE_LIVES
+const APES_TOGETHER := ReactionDefinitions.APES_TOGETHER
 
 const CINNABARK := "monster.name.cinnabark"
 const RHIZUKA := "monster.name.rhizuka"
@@ -356,6 +358,25 @@ func test_battle_each_metric_triggers_for_every_reaction() -> void:
 				)
 
 
+func test_battle_float_metrics_trigger() -> void:
+	# The reader emits floats for battle counters (e.g. heal=420.0); they must
+	# still match an integer threshold.
+	for case in BATTLE_CASES:
+		var value := int(case["value"])
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+			_unit(0, {"healing_done": float(value)}),
+		]))
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(str(earned[0].get("id", "")), str(case["id"]))
+			assert_eq(
+				str(earned[0].get("detail", "")),
+				_detail(CINNABARK, "heal", value),
+				str(case["id"])
+			)
+
+
 func test_battle_near_misses_do_not_trigger() -> void:
 	for case in BATTLE_CASES:
 		var value := int(case["value"])
@@ -604,6 +625,17 @@ func test_over_9000_each_dot_metric_triggers_with_actual_total() -> void:
 			)
 
 
+func test_over_9000_float_metrics_trigger() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"poison_inflicted": 9002.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), OVER_9000)
+		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "poison", 9002))
+
+
 func test_over_9000_boundary_9000_does_not_trigger() -> void:
 	for key in OVER_9000_METRICS:
 		var evaluator = _new_evaluator()
@@ -703,15 +735,13 @@ func test_over_9000_invalid_values_ignored() -> void:
 
 
 func test_battle_unknown_comparison_never_matches() -> void:
-	# A typo in a row's `comparison` must not silently behave as equality.
+	# A typo in a comparison must not silently behave as equality.
 	var evaluator = _new_evaluator()
-	var metric := {"key": "damage_dealt", "label": "damage"}
-	var unit := _unit(0, {"damage_dealt": 67})
-	assert_eq(evaluator._matching_total(unit, metric, {"id": "bogus", "value": 67, "comparison": "gte"}), null)
-	assert_eq(evaluator._matching_total(unit, metric, {"id": "bogus", "value": 67, "comparison": "GT"}), null)
-	# The two supported comparisons still work.
-	assert_eq(evaluator._matching_total(unit, metric, {"id": "eq", "value": 67}), 67)
-	assert_eq(evaluator._matching_total(unit, metric, {"id": "gt", "value": 66, "comparison": "gt"}), 67)
+	assert_false(evaluator._compare(67, "bogus", 67))
+	assert_false(evaluator._compare(67, "GT", 67))
+	# The supported comparisons still work.
+	assert_true(evaluator._compare(67, "eq", 67))
+	assert_true(evaluator._compare(67, "gt", 66))
 
 
 # --- 9. achievement completion state does not suppress reactions ---
@@ -729,7 +759,7 @@ func test_achievement_completion_does_not_suppress_reaction() -> void:
 	_cleanup(dir)
 
 
-# --- 10. flawless_victory: committed post-battle wins/lives ---
+# --- 10. 7_or_more_lives: committed post-battle wins/lives ---
 
 func _battle_outcome(
 	wins,
@@ -747,25 +777,34 @@ func _battle_outcome(
 	}
 
 
-func test_flawless_victory_triggers_at_ten_wins_and_ten_lives() -> void:
+func test_seven_or_more_lives_triggers_at_ten_wins_and_ten_lives() -> void:
 	var evaluator = _new_evaluator()
 	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 10))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("id", "")), FLAWLESS_VICTORY)
+		assert_eq(str(earned[0].get("id", "")), SEVEN_OR_MORE_LIVES)
 		assert_eq(str(earned[0].get("detail", "")), "Wins 10, Lives 10")
-	assert_eq(evaluator.occurrence_count(FLAWLESS_VICTORY), 1)
+	assert_eq(evaluator.occurrence_count(SEVEN_OR_MORE_LIVES), 1)
 
 
-func test_flawless_victory_near_misses_do_not_trigger() -> void:
-	for pair in [[9, 10], [11, 10], [10, 9], [10, 11]]:
+func test_seven_or_more_lives_triggers_at_seven_lives() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 7))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), SEVEN_OR_MORE_LIVES)
+		assert_eq(str(earned[0].get("detail", "")), "Wins 10, Lives 7")
+
+
+func test_seven_or_more_lives_near_misses_do_not_trigger() -> void:
+	for pair in [[9, 10], [11, 10], [10, 6]]:
 		assert_empty(
 			_new_evaluator().poll_battle(_battle_outcome(pair[0], pair[1])),
 			"%d/%d" % [pair[0], pair[1]]
 		)
 
 
-func test_flawless_victory_requires_a_valid_committed_outcome() -> void:
+func test_seven_or_more_lives_requires_a_valid_committed_outcome() -> void:
 	assert_empty(_new_evaluator().poll_battle(_battle([], [], true)))
 	for outcome in [
 		{"wins": "10", "lives": 10},
@@ -779,14 +818,14 @@ func test_flawless_victory_requires_a_valid_committed_outcome() -> void:
 		assert_empty(_new_evaluator().poll_battle(snapshot), str(outcome))
 
 
-func test_flawless_victory_only_evaluated_at_battle_over() -> void:
+func test_seven_or_more_lives_only_evaluated_at_battle_over() -> void:
 	assert_empty(_new_evaluator().poll_battle(_battle_outcome(10, 10, false)))
 	var snapshot := _battle_outcome(10, 10)
 	snapshot.erase("battle_over")
 	assert_empty(_new_evaluator().poll_battle(snapshot))
 
 
-func test_flawless_victory_is_once_per_run_not_per_battle() -> void:
+func test_seven_or_more_lives_is_once_per_run_not_per_battle() -> void:
 	var evaluator = _new_evaluator()
 	var snapshot := _battle_outcome(10, 10)
 	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
@@ -797,7 +836,7 @@ func test_flawless_victory_is_once_per_run_not_per_battle() -> void:
 	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
 
 
-func test_flawless_victory_does_not_require_battle_units() -> void:
+func test_seven_or_more_lives_does_not_require_battle_units() -> void:
 	var snapshot := _battle_outcome(10, 10)
 	snapshot.erase("battle_units")
 	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
@@ -805,7 +844,7 @@ func test_flawless_victory_does_not_require_battle_units() -> void:
 	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
 
 
-func test_flawless_victory_does_not_trigger_on_run_snapshot() -> void:
+func test_seven_or_more_lives_does_not_trigger_on_run_snapshot() -> void:
 	assert_empty(_new_evaluator().poll({
 		"kind": "run",
 		"lives": 10,
@@ -814,18 +853,76 @@ func test_flawless_victory_does_not_trigger_on_run_snapshot() -> void:
 	}))
 
 
-func test_flawless_victory_coexists_with_unit_reactions() -> void:
+func test_seven_or_more_lives_coexists_with_unit_reactions() -> void:
 	var earned: Array = _new_evaluator().poll_battle(_battle_outcome(
 		10, 10, true, [_unit(0, {"damage_dealt": 67})], _team_one()
 	))
 	var ids := _ids(earned)
 	assert_true(ids.has(SIX_SEVEN))
-	assert_true(ids.has(FLAWLESS_VICTORY))
+	assert_true(ids.has(SEVEN_OR_MORE_LIVES))
 
 
 func test_registered_rows_include_the_outcome_scope() -> void:
 	var found := false
 	for entry in ReactionEvaluator.registered_rows():
-		if str(entry["scope"]) == ReactionEvaluator.SCOPE_OUTCOME and str(entry["row"].get("id", "")) == FLAWLESS_VICTORY:
+		if str(entry["scope"]) == ReactionEvaluator.SCOPE_OUTCOME and str(entry["row"].get("id", "")) == SEVEN_OR_MORE_LIVES:
 			found = true
 	assert_true(found)
+
+
+# --- 11. apes_together: Twins with a fielded level-3 Sunsage ---
+
+const SUNSAGE := "monster.name.sunsage"
+const TWINS := "twins"
+const OTHER_TRAINER := "other"
+
+
+func _run_with(trainer: String, team: Array, bench: Array = []) -> Dictionary:
+	return {
+		"kind": "run",
+		"trainer_id": trainer,
+		"team": team,
+		"bench": bench,
+	}
+
+
+func _monster(name_key: String, level: int) -> Dictionary:
+	return {"name_key": name_key, "level": level}
+
+
+func test_apes_together_triggers_for_twins_with_a_level3_sunsage() -> void:
+	var earned: Array = _new_evaluator().poll(_run_with(TWINS, [_monster(SUNSAGE, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), APES_TOGETHER)
+		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Sunsage level 3")
+
+
+func test_apes_together_does_not_trigger_for_other_trainers() -> void:
+	assert_empty(_new_evaluator().poll(_run_with(OTHER_TRAINER, [_monster(SUNSAGE, 3)])))
+
+
+func test_apes_together_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_with(TWINS, [_monster(SUNSAGE, 2)])))
+
+
+func test_apes_together_triggers_for_bench_only() -> void:
+	var earned: Array = _new_evaluator().poll(_run_with(TWINS, [], [_monster(SUNSAGE, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), APES_TOGETHER)
+
+
+func test_apes_together_fires_once_per_run() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _run_with(TWINS, [_monster(SUNSAGE, 3)])
+	assert_eq(evaluator.poll(snapshot).size(), 1)
+	assert_empty(evaluator.poll(snapshot))
+
+
+func test_apes_together_reset_run_rearms() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _run_with(TWINS, [_monster(SUNSAGE, 3)])
+	assert_eq(evaluator.poll(snapshot).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll(snapshot).size(), 1)

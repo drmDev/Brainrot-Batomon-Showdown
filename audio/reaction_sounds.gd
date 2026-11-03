@@ -1,19 +1,17 @@
 extends RefCounted
 ## ReactionSounds - table-driven one-shot sounds for reactions.
 ##
-## Adding a reaction sound is one row in REACTION_SOUNDS plus the OGG file in
-## assets/sounds/. Gameplay and the dev toast preview both call play_for(id), so
-## they cannot drift.
+## The table is derived from reactions/reaction_definitions.gd, so a reaction's
+## `sound` block is the only place its audio is declared. Gameplay and the dev
+## toast preview both call play_for(id), so they cannot drift.
 ##
 ## Rows: {"file": String, "volume_db": float optional}. One UiSound is created per
 ## FILE (rows sharing a file share a player) and loaded lazily on first play.
 
 const UiSound = preload("ui_sound.gd")
+const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
 
-const REACTION_SOUNDS := {
-	"over_9000": {"file": "over-9000.ogg"},
-	"flawless_victory": {"file": "ff_fanfare.ogg"},
-}
+static var REACTION_SOUNDS := ReactionDefinitions.sounds()
 
 var _host: Node
 var _enabled: Callable

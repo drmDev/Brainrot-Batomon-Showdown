@@ -41,12 +41,10 @@ extends RefCounted
 ##   not add up. Twins duplicates that share a slot are therefore judged individually.
 
 const TWINS_TRAINER_ID := "twins"
-const BEETBUD_KEY := "monster.name.beetbud"
 const BEETDOWN_KEY := "monster.name.beetdown"
-const FRILLET_KEY := "monster.name.frillet"
 const DEWLOTL_KEY := "monster.name.dewlotl"
-const PRE_EVOLVE_LEVEL := 2  # Pre-evolution at this level evolves into its level-3 form
-const EVOLUTION_ARM_WINDOW_MS := 2000  # Spans the game's multi-poll evolution animation
+const EVOLVED_LEVEL := 3      # Twins double-evolution produces level-3 units
+const EVOLUTION_COPIES := 1   # One level-3 evolved unit is enough (Twins grants the copy)
 
 const GENTLEMAN_TRAINER_ID := "gentleman"
 const RHIZUKA_KEY := "monster.name.rhizuka"
@@ -90,34 +88,17 @@ const ALL_ACHIEVEMENTS := [
 	BIG_DOG,
 ]
 
-## Twins double-evolution achievements: same rule, different species pair.
+## Twins double-evolution achievements: same rule, different evolved species.
 const EVOLUTION_ACHIEVEMENTS := [
-	{"achievement": OH_YEAH, "pre_key": BEETBUD_KEY, "post_key": BEETDOWN_KEY},
-	{"achievement": HERD_U_LIEK_MUDKIPZ, "pre_key": FRILLET_KEY, "post_key": DEWLOTL_KEY},
+	{"achievement": OH_YEAH, "post_key": BEETDOWN_KEY},
+	{"achievement": HERD_U_LIEK_MUDKIPZ, "post_key": DEWLOTL_KEY},
 ]
 
-# Armed evolution baselines: achievement id -> {"baseline_post": int, "expires_ms": int}.
-var _evolution_armed: Dictionary = {}
-# Evolved-unit count from the previous poll, per achievement id.
-var _last_post_counts: Dictionary = {}
+# Twins evolution achievements awarded this run (suppresses repeat polling).
+var _evolution_awarded: Dictionary = {}
 
 # Gentleman Rhizuka achievement: awarded this run (suppresses repeat polling).
 var _rhizuka_awarded := false
-
-# Injectable clock. Empty in production (falls back to Time.get_ticks_msec()).
-# Tests pass a controllable Callable so the evolution arm window is deterministic.
-var _now_fn: Callable
-
-
-func _init(now_fn: Callable = Callable()) -> void:
-	_now_fn = now_fn
-
-
-## Current time in milliseconds. Production uses the engine clock; tests inject.
-func _now() -> int:
-	if _now_fn.is_valid():
-		return int(_now_fn.call())
-	return Time.get_ticks_msec()
 
 
 ## Poll a run snapshot for newly earned achievements. Returns an Array of achievement
@@ -146,34 +127,16 @@ func poll(run_snapshot: Dictionary) -> Array:
 		_reset_evolution_state()
 		return earned
 
-	var now := _now()
 	for def in EVOLUTION_ACHIEVEMENTS:
 		var achievement: Dictionary = def["achievement"]
 		var id := str(achievement.get("id", ""))
-		var pre_record: Dictionary = owned.get(str(def["pre_key"]), {})
+		if _evolution_awarded.has(id):
+			continue
 		var post_record: Dictionary = owned.get(str(def["post_key"]), {})
-		var pre_levels: Dictionary = pre_record.get("levels", {})
-		var pre_count := int(pre_levels.get(PRE_EVOLVE_LEVEL, 0))
-		var post_count := int(post_record.get("count", 0))
-
-		# Arm on the level-2 pre-evolution, recording the evolved count to beat. The
-		# previous poll's count is the baseline so a same-poll double still counts.
-		var armed: Dictionary = _evolution_armed.get(id, {})
-		if pre_count > 0:
-			if armed.is_empty():
-				armed = {"baseline_post": int(_last_post_counts.get(id, post_count))}
-			armed["expires_ms"] = now + EVOLUTION_ARM_WINDOW_MS
-			_evolution_armed[id] = armed
-
-		if not armed.is_empty():
-			# Twins doubles the leveled unit, so the evolved count rises by 2. The two
-			# copies may land in separate polls, hence the armed window.
-			if post_count >= int(armed.get("baseline_post", 0)) + 2:
-				_evolution_armed.erase(id)
-				earned.append(achievement.duplicate(true))
-			elif now > int(armed.get("expires_ms", 0)):
-				_evolution_armed.erase(id)
-		_last_post_counts[id] = post_count
+		var levels: Dictionary = post_record.get("levels", {})
+		if int(levels.get(EVOLVED_LEVEL, 0)) >= EVOLUTION_COPIES:
+			_evolution_awarded[id] = true
+			earned.append(achievement.duplicate(true))
 
 	return earned
 
@@ -254,10 +217,9 @@ func _reset() -> void:
 	_rhizuka_awarded = false
 
 
-## Clear only the Twins evolution baselines (keeps the Gentleman flag).
+## Clear only the Twins evolution awards (keeps the Gentleman flag).
 func _reset_evolution_state() -> void:
-	_evolution_armed.clear()
-	_last_post_counts.clear()
+	_evolution_awarded.clear()
 
 
 ## One pass over team + bench: species key -> {"count": int, "levels": {level: count}}.

@@ -7,6 +7,7 @@ extends "test_runner.gd"
 const ToastCatalog = preload("../notifications/toast_catalog.gd")
 const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
+const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
 
 
@@ -51,12 +52,16 @@ func test_entries_include_every_registered_reaction_once() -> void:
 	assert_eq(reactions.size(), expected_ids.size(), "reaction ids must not duplicate")
 
 
-func test_flawless_victory_preview_uses_committed_totals() -> void:
+func test_seven_or_more_lives_preview_uses_committed_totals() -> void:
 	var entries := ToastCatalog.entries()
-	var found := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, "flawless_victory")
-	assert_false(found.is_empty(), "flawless_victory must be in the catalog")
-	assert_eq(str(found.get("title", "")), "Flawless Victory")
-	assert_eq(str(found.get("description", "")), "Wins 10, Lives 10")
+	var found := ToastCatalog.find(
+		entries,
+		NotificationRequest.KIND_REACTION,
+		ReactionDefinitions.SEVEN_OR_MORE_LIVES,
+	)
+	assert_false(found.is_empty(), "7_or_more_lives must be in the catalog")
+	assert_eq(str(found.get("title", "")), "You look great today!")
+	assert_eq(str(found.get("description", "")), "Wins 10, Lives >= 7")
 
 
 func test_every_entry_has_a_non_empty_label_and_title() -> void:
@@ -86,14 +91,20 @@ func test_make_request_allows_repeated_previews() -> void:
 func test_make_request_copies_entry_presentation() -> void:
 	var entry := {
 		"kind": NotificationRequest.KIND_REACTION,
-		"id": "four_twenty",
+		"id": ReactionDefinitions.FOUR_TWENTY,
 		"label": "Reaction - Blaze It",
 		"title": "Blaze It",
 		"description": "Battle total 420",
 	}
 	var request = ToastCatalog.make_request(entry)
 	assert_eq(request.kind, NotificationRequest.KIND_REACTION)
-	assert_eq(request.event_key, NotificationRequest.key_for(NotificationRequest.KIND_REACTION, "four_twenty"))
+	assert_eq(
+		request.event_key,
+		NotificationRequest.key_for(
+			NotificationRequest.KIND_REACTION,
+			ReactionDefinitions.FOUR_TWENTY,
+		),
+	)
 	assert_eq(request.header, NotificationRequest.HEADER_REACTION)
 	assert_eq(request.title, "Blaze It")
 	assert_eq(request.description, "Battle total 420")

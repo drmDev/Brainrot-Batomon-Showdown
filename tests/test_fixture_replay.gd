@@ -122,8 +122,7 @@ func _replay_file(path: String) -> void:
 	else:
 		steps = [parsed]
 
-	var clock = TestHelpers.TestClock.new()
-	var evaluator = AchievementEvaluator.new(clock.now)
+	var evaluator = AchievementEvaluator.new()
 
 	for step in steps:
 		if not step is Dictionary:
@@ -138,4 +137,3 @@ func _replay_file(path: String) -> void:
 			assert_eq(_sorted_ids(earned), _sorted_expected(step), "fixture step: " + path)
 		else:
 			assert_true(earned is Array, "captured fixture returned non-array: " + path)
-		clock.advance(100)

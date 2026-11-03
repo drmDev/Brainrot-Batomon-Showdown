@@ -6,6 +6,7 @@ extends "test_runner.gd"
 
 const ReactionSounds = preload("../audio/reaction_sounds.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
+const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
 
 
 func _registered_ids() -> Dictionary:
@@ -22,8 +23,14 @@ func test_every_sound_id_is_a_registered_reaction() -> void:
 
 
 func test_expected_sounds_are_mapped() -> void:
-	assert_eq(ReactionSounds.REACTION_SOUNDS["over_9000"]["file"], "over-9000.ogg")
-	assert_eq(ReactionSounds.REACTION_SOUNDS["flawless_victory"]["file"], "ff_fanfare.ogg")
+	assert_eq(
+		ReactionSounds.REACTION_SOUNDS[ReactionDefinitions.OVER_9000]["file"],
+		"over-9000.ogg",
+	)
+	assert_eq(
+		ReactionSounds.REACTION_SOUNDS[ReactionDefinitions.SEVEN_OR_MORE_LIVES]["file"],
+		"ff_fanfare.ogg",
+	)
 
 
 func test_every_sound_file_exists_and_loads() -> void:
@@ -63,7 +70,7 @@ func test_enabled_gate_blocks_play() -> void:
 	var sounds = ReactionSounds.new(host, func():
 		called[0] = true
 		return false)
-	sounds.play_for("over_9000")
+	sounds.play_for(ReactionDefinitions.OVER_9000)
 	assert_true(called[0])
 	assert_eq(host.get_child_count(), 0)
 	host.free()
