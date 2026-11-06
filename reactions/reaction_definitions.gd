@@ -146,7 +146,7 @@ const DEFINITIONS := [
 			{"scope": SCOPE_RUN, "when": [["income", OP_GREATER_THAN, 9000]]},
 			{
 				"scope": SCOPE_BATTLE,
-				"metrics": ["burn", "poison", "shock"],
+				"metrics": ["heal", "burn", "poison", "shock"],
 				"total": [OP_GREATER_THAN, 9000],
 			},
 		],

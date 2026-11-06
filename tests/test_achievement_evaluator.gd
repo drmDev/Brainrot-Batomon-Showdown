@@ -15,6 +15,7 @@ const RHIZUKA := "monster.name.rhizuka"
 const BEETDOWN := "monster.name.beetdown"
 const DEWLOTL := "monster.name.dewlotl"
 const CINNABARK := "monster.name.cinnabark"
+const GALVANINE := "monster.name.galvanine"
 
 
 
@@ -436,6 +437,84 @@ func test_poll_battle_missing_battle_over_returns_empty() -> void:
 		"battle_units": [TestHelpers.battle_unit_snapshot(0, 0, 2000000.0)],
 	}
 	assert_empty(evaluator.poll_battle(state))
+
+
+# --- So I started blasting: Galvanine shock ---
+
+func test_galvanine_shock_at_threshold_awards() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(GALVANINE, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 1000},
+	])
+	assert_single_achievement(evaluator.poll_battle(state), "so_i_started_blasting")
+
+
+func test_galvanine_shock_below_threshold_does_not_award() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(GALVANINE, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 999},
+	])
+	assert_empty(evaluator.poll_battle(state))
+
+
+func test_galvanine_shock_enemy_side_ignored() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(GALVANINE, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 1, "slot_index": 0, "shock_inflicted": 1000},
+	])
+	assert_empty(evaluator.poll_battle(state))
+
+
+func test_galvanine_shock_non_galvanine_ignored() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(CINNABARK, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 1000},
+	])
+	assert_empty(evaluator.poll_battle(state))
+
+
+func test_galvanine_shock_awards_only_once() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(GALVANINE, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 1000},
+	])
+	assert_eq(evaluator.poll_battle(state).size(), 1)
+	assert_empty(evaluator.poll_battle(state))
+
+
+func test_galvanine_shock_and_big_dog_can_both_award() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		TestHelpers.monster_snapshot(GALVANINE, 3),
+		TestHelpers.monster_snapshot(CINNABARK, 3),
+	]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 1000},
+		{"team_id": 0, "slot_index": 1, "shield_granted": 1000001.0},
+	])
+	var earned: Array = evaluator.poll_battle(state)
+	assert_eq(earned.size(), 2)
+	var ids := []
+	for achievement in earned:
+		ids.append(str(achievement.get("id", "")))
+	assert_true(ids.has("so_i_started_blasting"))
+	assert_true(ids.has("big_dog_best_dog"))
+
+
+func test_reset_run_clears_galvanine_award() -> void:
+	var evaluator = _new_evaluator()
+	var team := [TestHelpers.monster_snapshot(GALVANINE, 3)]
+	var state = TestHelpers.battle_snapshot(OTHER, 3, team, [
+		{"team_id": 0, "slot_index": 0, "shock_inflicted": 1000},
+	])
+	assert_eq(evaluator.poll_battle(state).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_battle(state).size(), 1)
 
 
 # --- Achievement definition consistency ---

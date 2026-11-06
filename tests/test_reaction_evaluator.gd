@@ -601,12 +601,17 @@ func test_battle_reactions_do_not_trigger_on_run_snapshot() -> void:
 	assert_eq(evaluator.occurrence_count(OVER_9000), 0)
 
 
-# --- 8c. over_9000: burn/poison/shock strictly above 9000 ---
+# --- 8c. over_9000: heal/burn/poison/shock strictly above 9000 ---
 
-const OVER_9000_METRICS := ["burn_inflicted", "poison_inflicted", "shock_inflicted"]
+const OVER_9000_METRICS := [
+	"healing_done",
+	"burn_inflicted",
+	"poison_inflicted",
+	"shock_inflicted",
+]
 
 
-func test_over_9000_each_dot_metric_triggers_with_actual_total() -> void:
+func test_over_9000_each_metric_triggers_with_actual_total() -> void:
 	for metric in BATTLE_METRICS:
 		var key := str(metric["key"])
 		if not OVER_9000_METRICS.has(key):
@@ -645,8 +650,8 @@ func test_over_9000_boundary_9000_does_not_trigger() -> void:
 		)
 
 
-func test_over_9000_ignores_damage_heal_shield() -> void:
-	for key in ["damage_dealt", "healing_done", "shield_granted"]:
+func test_over_9000_ignores_damage_and_shield() -> void:
+	for key in ["damage_dealt", "shield_granted"]:
 		var evaluator = _new_evaluator()
 		assert_empty(
 			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {key: 12000})])),
@@ -679,8 +684,8 @@ func test_over_9000_lowest_slot_wins() -> void:
 		assert_eq(str(earned[0].get("detail", "")), _detail(RHIZUKA, "poison", 9001))
 
 
-func test_over_9000_first_dot_metric_wins_within_a_slot() -> void:
-	# BATTLE_METRICS order is burn, poison, shock.
+func test_over_9000_first_metric_wins_within_a_slot() -> void:
+	# BATTLE_METRICS order is heal, burn, poison, shock; heal is absent here.
 	var evaluator = _new_evaluator()
 	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
 		_unit(0, {"shock_inflicted": 12000, "burn_inflicted": 9001}),
