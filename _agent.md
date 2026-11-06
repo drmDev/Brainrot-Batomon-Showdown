@@ -135,6 +135,7 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 - Reactions must not read the achievement store or depend on achievement completion.
 - Reaction definitions live in `reactions/reaction_definitions.gd`. Adding a reaction is one block there; the evaluator, toast titles, sounds, and preview descriptions all read from it. Do not add per-reaction tables elsewhere. `tests/test_reaction_definitions.gd` validates the schema and generates a match/boundary-miss case per trigger.
 - Reaction conditions support int fields (`lives`, `day`, `wins`, `income`), the string field `trainer` (eq/ne only), `any` blocks, and `owns` (a team or bench unit matching a species and level comparison). `owns` is state-based, so the generated matrix covers it.
+- Run-scoped reactions are evaluated only while the shop state is active (`mod_main` gates `poll()` on `shop_state.gd`; the evaluator stays phase-agnostic). The game promotes the completed run into `RunManager.data` before the visual battle ends (see BatomonHelperBridge `read_battle_outcome`), so polling mid-battle would fire the lives/wins paths of 6 7 and 6 9 before the player sees the next day. Battle- and outcome-scoped reactions still fire at `battle_over`.
 - Toasts are always on.
 - Compact UI needs explicit font, stylebox, and popup overrides; see **UI Sizing and Theme Overrides**. Do not rely on Godot's default theme for HUD/tool controls.
 - Retain the 500 ms polling interval unless measurements justify changing it.

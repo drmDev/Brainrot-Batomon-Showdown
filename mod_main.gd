@@ -15,9 +15,12 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.41"
+const VERSION := "0.0.0.42"
 const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
+# Verified in BatomonHelperBridge (reads shop_state.manager/view). The shop is the
+# start of a day, the only phase where run-scoped reactions are evaluated.
+const SHOP_SCRIPT := "res://game/states/shop_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
 
 # Log file (same layout as Creature Comforts, different path)
@@ -48,6 +51,10 @@ var _reaction_evaluator = null
 var _reaction_player = null
 var _reaction_sounds = null
 var _last_progress_signature := ""
+
+# Run-scoped reaction phase gate. "shop" while the shop is active, "deferred"
+# otherwise. Only changes are logged, not every 500 ms poll.
+var _run_reaction_gate_state := ""
 
 var _next_poll := 0
 var _was_battle := false
@@ -228,6 +235,7 @@ func _inspect_current_phase() -> void:
 	var main = get_tree().current_scene
 	var state = main.get("current_state") if _has_property(main, "current_state") else null
 	var is_battle := _script_is(state, BATTLE_SCRIPT)
+	var is_shop := _script_is(state, SHOP_SCRIPT)
 
 	var run = _get_run_data()
 	var run_snapshot: Dictionary = _snapshot_reader.read_run(run) if _snapshot_reader != null else {}
@@ -236,7 +244,12 @@ func _inspect_current_phase() -> void:
 	# Run-scoped achievements are evaluated every poll (the Twins transformation
 	# happens in the shop, but polling all phases keeps the team baseline current).
 	_poll_achievements(run_snapshot)
-	_poll_reactions(run_snapshot)
+	# Run-scoped reactions are evaluated only in the shop (the start of a day).
+	# The game promotes the completed run into RunManager.data before the visual
+	# battle ends, so lives/wins/income there already reflect the post-battle
+	# result. Polling mid-battle would fire 6 7 / 6 9 before the player sees the
+	# next day. Battle- and outcome-scoped reactions still fire at battle_over.
+	_poll_reactions(run_snapshot, is_shop)
 	_log_run_progress(run_snapshot)
 
 	var battle_snapshot: Dictionary = {}
@@ -301,10 +314,32 @@ func _poll_battle_achievements(battle_snapshot: Dictionary) -> void:
 
 
 ## Poll the run snapshot for newly triggered reactions and play them.
-func _poll_reactions(run_snapshot: Dictionary) -> void:
+##
+## `is_shop` gates run-scoped evaluation to the start of a day. Outside the shop
+## (battle, battle results, transitions) the committed post-battle lives/wins are
+## already in RunManager.data, so polling would reveal the result before the
+## player sees the next day. The evaluator stays phase-agnostic; this only decides
+## when to call it.
+func _poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 	if _reaction_evaluator == null or _reaction_player == null:
 		return
+	_note_run_reaction_gate(is_shop)
+	if not is_shop:
+		return
 	_reaction_player.play_all(_reaction_evaluator.poll(run_snapshot))
+
+
+## Log the run-reaction phase gate only when it changes, so the first real session
+## can confirm the gate holds without spamming the 500 ms poll.
+func _note_run_reaction_gate(is_shop: bool) -> void:
+	var state := "shop" if is_shop else "deferred"
+	if state == _run_reaction_gate_state:
+		return
+	_run_reaction_gate_state = state
+	if is_shop:
+		_log_event("RUN REACTIONS | active (shop)")
+	else:
+		_log_event("RUN REACTIONS | deferred (not shop)")
 
 
 ## Poll a completed battle snapshot for battle-scoped reactions (final unit totals).

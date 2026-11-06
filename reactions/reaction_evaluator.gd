@@ -19,7 +19,10 @@ extends RefCounted
 ## Occurrence semantics:
 ## - Run-scoped: triggers once per run, the first time a matching snapshot is seen.
 ##   Repeated matching polls, leaving and returning, and a menu round-trip (run
-##   unavailable) do not retrigger. Only reset_run() clears it.
+##   unavailable) do not retrigger. Only reset_run() clears it. mod_main calls
+##   poll() only while the shop state is active (the start of a day), so a battle's
+##   committed lives/wins cannot trigger it before the player sees the next day.
+##   This evaluator stays phase-agnostic; the caller owns that timing.
 ## - Battle-scoped: evaluated only on the FINAL battle totals (battle_over), never
 ##   mid-fight. Each battle reaction fires at most ONCE per battle, even when several
 ##   units qualify: the lowest slot wins, and within that slot the first metric in
