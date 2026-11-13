@@ -72,13 +72,11 @@ const BIG_DOG := "big_dog_best_dog"
 
 ## Achievement rule names. The achievement evaluator dispatches on these.
 const RULE_GENTLEMAN_RHIZUKA := "gentleman_rhizuka"
-const RULE_GALVANINE_SHOCK := "galvanine_shock"
 const RULE_TWINS_EVOLUTION := "twins_evolution"
 const RULE_CINNABARK_SHIELD := "cinnabark_shield"
 
 const RULES := [
 	RULE_GENTLEMAN_RHIZUKA,
-	RULE_GALVANINE_SHOCK,
 	RULE_TWINS_EVOLUTION,
 	RULE_CINNABARK_SHIELD,
 ]
@@ -139,7 +137,7 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": APES_TOGETHER,
 		"title": "Apes together, strong",
-		"description": "Twins with a level-3 Sunsage",
+		"description": "Double sunsage!",
 		"persist": false,
 		"scopes": [SCOPE_RUN],
 	},
@@ -149,7 +147,7 @@ const ENTRIES := [
 		"kind": KIND_ACHIEVEMENT,
 		"id": OH_YEAH,
 		"title": "Oh Yeah!",
-		"description": "Made double kool aid man level 3s at once !",
+		"description": "Double kool aid man!",
 		"persist": true,
 		"track": true,
 		"rules": [
@@ -164,7 +162,7 @@ const ENTRIES := [
 		"kind": KIND_ACHIEVEMENT,
 		"id": HERD_U_LIEK_MUDKIPZ,
 		"title": "Herd U Liek Mudkipz",
-		"description": "Made double Dewlotl level 3s at once !",
+		"description": "Double Dewlotls!",
 		"persist": true,
 		"track": true,
 		"rules": [
@@ -179,12 +177,11 @@ const ENTRIES := [
 		"kind": KIND_ACHIEVEMENT,
 		"id": SO_I_STARTED_BLASTING,
 		"title": "So I started blasting",
-		"description": "Got a level 2 Rhizuka by Day 5, or 1000+ shock with Galvanine",
+		"description": "Got a level 2 Rhizuka by Day 5",
 		"persist": true,
 		"track": true,
 		"rules": [
 			{"name": RULE_GENTLEMAN_RHIZUKA, "scope": SCOPE_RUN},
-			{"name": RULE_GALVANINE_SHOCK, "scope": SCOPE_BATTLE},
 		],
 	},
 	{
