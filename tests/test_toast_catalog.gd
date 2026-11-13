@@ -5,9 +5,7 @@ extends "test_runner.gd"
 ## once, and build duplicate-allowed requests for repeated previews.
 
 const ToastCatalog = preload("../notifications/toast_catalog.gd")
-const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
-const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
 
 
@@ -29,7 +27,7 @@ func _reaction_entries(entries: Array) -> Array:
 
 func test_entries_include_every_registered_achievement() -> void:
 	var entries := ToastCatalog.entries()
-	for definition in AchievementEvaluator.ALL_ACHIEVEMENTS:
+	for definition in Catalog.achievements():
 		var id := str(definition.get("id", ""))
 		var found := ToastCatalog.find(entries, NotificationRequest.KIND_ACHIEVEMENT, id)
 		assert_false(found.is_empty(), "missing achievement " + id)
@@ -40,8 +38,8 @@ func test_entries_include_every_registered_achievement() -> void:
 func test_entries_include_every_registered_reaction_once() -> void:
 	var entries := ToastCatalog.entries()
 	var expected_ids := {}
-	for registered in ReactionEvaluator.registered_rows():
-		expected_ids[str(registered["row"].get("id", ""))] = true
+	for registered in Catalog.reactions():
+		expected_ids[str(registered.get("id", ""))] = true
 
 	for id in expected_ids:
 		var found := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, id)
@@ -57,11 +55,14 @@ func test_seven_or_more_lives_preview_uses_committed_totals() -> void:
 	var found := ToastCatalog.find(
 		entries,
 		NotificationRequest.KIND_REACTION,
-		ReactionDefinitions.SEVEN_OR_MORE_LIVES,
+		Catalog.SEVEN_OR_MORE_LIVES,
 	)
 	assert_false(found.is_empty(), "7_or_more_lives must be in the catalog")
 	assert_eq(str(found.get("title", "")), "You look great today!")
-	assert_eq(str(found.get("description", "")), "Wins 10, Lives >= 7")
+	assert_eq(
+		str(found.get("description", "")),
+		Catalog.describe_entry(Catalog.entry(Catalog.SEVEN_OR_MORE_LIVES)),
+	)
 
 
 func test_every_entry_has_a_non_empty_label_and_title() -> void:
@@ -91,7 +92,7 @@ func test_make_request_allows_repeated_previews() -> void:
 func test_make_request_copies_entry_presentation() -> void:
 	var entry := {
 		"kind": NotificationRequest.KIND_REACTION,
-		"id": ReactionDefinitions.FOUR_TWENTY,
+		"id": Catalog.FOUR_TWENTY,
 		"label": "Reaction - Blaze It",
 		"title": "Blaze It",
 		"description": "Battle total 420",
@@ -102,7 +103,7 @@ func test_make_request_copies_entry_presentation() -> void:
 		request.event_key,
 		NotificationRequest.key_for(
 			NotificationRequest.KIND_REACTION,
-			ReactionDefinitions.FOUR_TWENTY,
+			Catalog.FOUR_TWENTY,
 		),
 	)
 	assert_eq(request.header, NotificationRequest.HEADER_REACTION)

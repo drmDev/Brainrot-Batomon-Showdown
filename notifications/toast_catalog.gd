@@ -1,14 +1,12 @@
 extends RefCounted
 ## ToastCatalog - registered achievement and reaction toasts for developer tooling.
 ##
-## Builds display entries from the existing evaluator registries, so the dev toast
+## Builds display entries from catalog/brain_rot_catalog.gd, so the dev toast
 ## preview always matches what gameplay can actually show. Pure data: no nodes, no
 ## game state, no achievement store. Previewing an entry never changes progress or
 ## save data; it only builds a NotificationRequest with duplicate display allowed.
 
-const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
-const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
 
 const KIND_ACHIEVEMENT := NotificationRequest.KIND_ACHIEVEMENT
@@ -16,13 +14,12 @@ const KIND_REACTION := NotificationRequest.KIND_REACTION
 
 
 ## Every registered achievement and reaction as
-## {kind, id, label, title, description}. Achievements come first, in evaluator
-## order; reactions follow in registry order with duplicate ids collapsed
-## (six_seven appears in both the run and battle tables).
+## {kind, id, label, title, description}. Achievements come first, in catalog
+## order; reactions follow in catalog order.
 static func entries() -> Array:
 	var out: Array = []
 
-	for definition in AchievementEvaluator.ALL_ACHIEVEMENTS:
+	for definition in Catalog.achievements():
 		var id := str(definition.get("id", ""))
 		if id.is_empty():
 			continue
@@ -35,9 +32,18 @@ static func entries() -> Array:
 			"description": str(definition.get("description", "")),
 		})
 
-	var seen := {}
-	for entry in ReactionEvaluator.registered_rows():
-		_append_reaction(out, seen, entry["row"], str(entry["scope"]))
+	for definition in Catalog.reactions():
+		var id := str(definition.get("id", ""))
+		if id.is_empty():
+			continue
+		var title := str(definition.get("title", id))
+		out.append({
+			"kind": KIND_REACTION,
+			"id": id,
+			"label": "Reaction - %s" % title,
+			"title": title,
+			"description": Catalog.describe_entry(definition),
+		})
 
 	return out
 
@@ -64,20 +70,3 @@ static func find(all_entries: Array, kind: String, id: String) -> Dictionary:
 		if str(entry.get("kind", "")) == kind and str(entry.get("id", "")) == id:
 			return entry
 	return {}
-
-
-## Append one reaction entry unless its id was already registered. The title and
-## description come from the reaction definition, so the preview cannot drift.
-static func _append_reaction(out: Array, seen: Dictionary, reaction, scope: String) -> void:
-	var id := str(reaction.get("id", ""))
-	if id.is_empty() or seen.has(id):
-		return
-	seen[id] = true
-	var title := ReactionDefinitions.title_for(id)
-	out.append({
-		"kind": KIND_REACTION,
-		"id": id,
-		"label": "Reaction - %s" % title,
-		"title": title,
-		"description": ReactionDefinitions.describe_trigger(reaction),
-	})

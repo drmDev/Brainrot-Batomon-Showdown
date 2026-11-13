@@ -6,16 +6,16 @@ extends "test_runner.gd"
 ## (67, 69, 420, 666). Adding a value reaction means one row here, not a new test block.
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const AchievementStore = preload("../achievements/achievement_store.gd")
 
-const SIX_SEVEN := ReactionDefinitions.SIX_SEVEN
-const SIX_NINE := ReactionDefinitions.SIX_NINE
-const FOUR_TWENTY := ReactionDefinitions.FOUR_TWENTY
-const SIX_SIX_SIX := ReactionDefinitions.SIX_SIX_SIX
-const OVER_9000 := ReactionDefinitions.OVER_9000
-const SEVEN_OR_MORE_LIVES := ReactionDefinitions.SEVEN_OR_MORE_LIVES
-const APES_TOGETHER := ReactionDefinitions.APES_TOGETHER
+const SIX_SEVEN := Catalog.SIX_SEVEN
+const SIX_NINE := Catalog.SIX_NINE
+const FOUR_TWENTY := Catalog.FOUR_TWENTY
+const SIX_SIX_SIX := Catalog.SIX_SIX_SIX
+const OVER_9000 := Catalog.OVER_9000
+const SEVEN_OR_MORE_LIVES := Catalog.SEVEN_OR_MORE_LIVES
+const APES_TOGETHER := Catalog.APES_TOGETHER
 
 const CINNABARK := "monster.name.cinnabark"
 const RHIZUKA := "monster.name.rhizuka"
@@ -737,16 +737,6 @@ func test_over_9000_invalid_values_ignored() -> void:
 	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": null})])))
 	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": "9002"})])))
 	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": true})])))
-
-
-func test_battle_unknown_comparison_never_matches() -> void:
-	# A typo in a comparison must not silently behave as equality.
-	var evaluator = _new_evaluator()
-	assert_false(evaluator._compare(67, "bogus", 67))
-	assert_false(evaluator._compare(67, "GT", 67))
-	# The supported comparisons still work.
-	assert_true(evaluator._compare(67, "eq", 67))
-	assert_true(evaluator._compare(67, "gt", 66))
 
 
 # --- 9. achievement completion state does not suppress reactions ---

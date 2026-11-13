@@ -10,7 +10,7 @@ extends RefCounted
 ##   e.g. "Brain Rot: REACTION | six_seven | Lives 6, Wins 7"
 
 const NotificationRequest = preload("../notifications/notification_request.gd")
-const ReactionDefinitions = preload("reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 var _log_fn: Callable
 var _submit_fn: Callable
@@ -56,7 +56,7 @@ func _submit(id: String, detail: String) -> void:
 	_submit_fn.call(NotificationRequest.new(
 		NotificationRequest.KIND_REACTION,
 		id,
-		ReactionDefinitions.title_for(id),
+		Catalog.title_for(id),
 		detail,
 	))
 

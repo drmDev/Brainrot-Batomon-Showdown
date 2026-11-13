@@ -2,15 +2,15 @@ extends "test_runner.gd"
 ## Validates the achievements.json schema and that saved ids match the evaluator's
 ## definitions. Guards against typos and stale ids drifting from the code.
 
-const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 
 func _known_ids() -> Array:
 	return [
-		str(AchievementEvaluator.SO_I_STARTED_BLASTING["id"]),
-		str(AchievementEvaluator.BIG_DOG["id"]),
-		str(AchievementEvaluator.OH_YEAH["id"]),
-		str(AchievementEvaluator.HERD_U_LIEK_MUDKIPZ["id"]),
+		Catalog.SO_I_STARTED_BLASTING,
+		Catalog.BIG_DOG,
+		Catalog.OH_YEAH,
+		Catalog.HERD_U_LIEK_MUDKIPZ,
 	]
 
 

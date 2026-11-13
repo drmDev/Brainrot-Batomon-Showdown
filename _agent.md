@@ -93,20 +93,20 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `mod.json` | Mod identity (`brain_rot`), version, and description. |
 | `mod_main.gd` | Loader lifecycle, session log (`user://brain_rot/inspect.log`), 500 ms polling, run-transition detection, coordination of reader/evaluator/store/detector/capture, award persistence, and toast display. |
 | `achievements/game_snapshot_reader.gd` | The only place that reads live game objects; produces plain snapshot Dictionaries (run and battle, including derived shop `income`) with absent keys for unknown values. |
-| `achievements/achievement_evaluator.gd` | Rules only: `poll(run_snapshot)`, `poll_battle(battle_snapshot)`, `reset_run()`; returns structured achievements without persistence or UI side effects. |
+| `achievements/achievement_evaluator.gd` | Rules only: dispatches the catalog's achievement rules via `poll(run_snapshot)`, `poll_battle(battle_snapshot)`, `reset_run()`; returns structured achievements without persistence or UI side effects. |
 | `achievements/achievement_store.gd` | JSON persistence for completion at the mod root (`achievements.json`); tolerates missing or corrupt files. |
 | `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. |
 | `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, and toast layout metrics. |
 | `hud/toast_preview_panel.gd` | Dev-only preview button/panel: compact dropdown of registered toasts, Play, and Close. |
-| `notifications/toast_catalog.gd` | Builds preview entries from the achievement/reaction registries and duplicate-allowed requests; reaction titles and descriptions come from `reaction_definitions.gd`. |
+| `notifications/toast_catalog.gd` | Builds preview entries from `catalog/brain_rot_catalog.gd` and duplicate-allowed requests; titles and descriptions come from the catalog. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
-| `audio/reaction_sounds.gd` | Reaction audio derived from each definition's `sound` block; lazy per-file players. |
+| `audio/reaction_sounds.gd` | Reaction audio derived from each catalog entry's `sound` block; lazy per-file players. |
 | `achievements/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
-| `reactions/reaction_definitions.gd` | The single source of truth for reactions: `DEFINITIONS` (id, title, optional message/sound, triggers), the run/outcome field registry, battle metric map, and comparison ops. Adding a reaction is one block here. |
-| `reactions/reaction_evaluator.gd` | Rules only: evaluates `DEFINITIONS` from snapshots. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear occurrence tracking. No store, UI, or live objects. |
-| `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast (title from `reaction_definitions.gd`), and forwards the id to the sound sink. |
+| `catalog/brain_rot_catalog.gd` | The single source of truth for achievements and reactions: `ENTRIES` (kind, id, title, description, persist, scopes or rules), one typed check function per reaction scope, the battle metric map, and achievement rule names. No condition DSL. Adding an entry is one metadata row plus one check function. |
+| `reactions/reaction_evaluator.gd` | Rules only: calls the catalog's reaction checks from snapshots and owns occurrence tracking plus the battle lowest-slot / metric-order tie-break. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear tracking. No store, UI, or live objects. |
+| `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast (title from the catalog), and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `reaction_definitions`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `achievement_evaluator`, `achievement_store`, `battle_completion_detector`, `achievements_schema`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `catalog`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
@@ -125,7 +125,6 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 - `_agent.md` and `plans/` are gitignored too, so they are local-only as well.
 
 ## Working conventions
-- **Versioning:** on every edit, bump the version by `0.0001` in BOTH places: `mod.json` (`version`) and `mod_main.gd` (`const VERSION`). (Note: the on-disk format is four segments, e.g. `0.0.0.4`; bump the last segment.)
 - Verify game identifiers/properties from source or runtime evidence; never invent APIs.
 - Keep the evaluator independent of live game objects, file writing, and UI drawing. All live-object reads belong in `game_snapshot_reader.gd`.
 - Snapshots use absent keys for unknown values; defaults belong to the rules, not the reader.
@@ -133,8 +132,8 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 - Persistence must not depend on the toast host existing.
 - Call `reset_run()` at verified run transitions (inferred in `mod_main` from `run_id`, then run object instance, trainer, and day regression). `run_id` is the primary identity: the game promotes `RunManager.data` to a new RunData object when a battle starts, so instance comparison alone fires a false reset at every battle. An unavailable run does not clear tracking; the comparison on return detects a new run.
 - Reactions must not read the achievement store or depend on achievement completion.
-- Reaction definitions live in `reactions/reaction_definitions.gd`. Adding a reaction is one block there; the evaluator, toast titles, sounds, and preview descriptions all read from it. Do not add per-reaction tables elsewhere. `tests/test_reaction_definitions.gd` validates the schema and generates a match/boundary-miss case per trigger.
-- Reaction conditions support int fields (`lives`, `day`, `wins`, `income`), the string field `trainer` (eq/ne only), `any` blocks, and `owns` (a team or bench unit matching a species and level comparison). `owns` is state-based, so the generated matrix covers it.
+- Achievements and reactions share one catalog: `catalog/brain_rot_catalog.gd`. Adding an entry is one metadata row plus one typed check function; the evaluators, toast titles, sounds, and preview descriptions all read from it. Do not add per-entry tables elsewhere. `tests/test_catalog.gd` validates the metadata invariants; per-reaction behavior lives in `tests/test_reaction_evaluator.gd`.
+- Reaction checks are plain typed GDScript in the catalog (`run_detail`, `battle_rule`, `outcome_detail`). There is no condition DSL; add a `match` arm and a helper for a new reaction.
 - Run-scoped reactions are evaluated only while the shop state is active (`mod_main` gates `poll()` on `shop_state.gd`; the evaluator stays phase-agnostic). The game promotes the completed run into `RunManager.data` before the visual battle ends (see BatomonHelperBridge `read_battle_outcome`), so polling mid-battle would fire the lives/wins paths of 6 7 and 6 9 before the player sees the next day. Battle- and outcome-scoped reactions still fire at `battle_over`.
 - Toasts are always on.
 - Compact UI needs explicit font, stylebox, and popup overrides; see **UI Sizing and Theme Overrides**. Do not rely on Godot's default theme for HUD/tool controls.

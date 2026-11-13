@@ -1,7 +1,7 @@
 extends RefCounted
 ## ReactionSounds - table-driven one-shot sounds for reactions.
 ##
-## The table is derived from reactions/reaction_definitions.gd, so a reaction's
+## The table is derived from catalog/brain_rot_catalog.gd, so a reaction's
 ## `sound` block is the only place its audio is declared. Gameplay and the dev
 ## toast preview both call play_for(id), so they cannot drift.
 ##
@@ -9,9 +9,9 @@ extends RefCounted
 ## FILE (rows sharing a file share a player) and loaded lazily on first play.
 
 const UiSound = preload("ui_sound.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
-static var REACTION_SOUNDS := ReactionDefinitions.sounds()
+static var REACTION_SOUNDS := Catalog.sounds()
 
 var _host: Node
 var _enabled: Callable

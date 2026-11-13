@@ -5,6 +5,7 @@ extends "test_runner.gd"
 ## tests build snapshots directly with TestHelpers.run_snapshot / battle_snapshot.
 
 const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const TestHelpers = preload("test_helpers.gd")
 
 const GENTLEMAN := "gentleman"
@@ -520,12 +521,7 @@ func test_reset_run_clears_galvanine_award() -> void:
 # --- Achievement definition consistency ---
 
 func test_achievement_ids_unique_and_well_formed() -> void:
-	var definitions := [
-		AchievementEvaluator.SO_I_STARTED_BLASTING,
-		AchievementEvaluator.BIG_DOG,
-		AchievementEvaluator.OH_YEAH,
-		AchievementEvaluator.HERD_U_LIEK_MUDKIPZ,
-	]
+	var definitions := Catalog.achievements()
 	var seen := {}
 	for achievement in definitions:
 		var id := str(achievement.get("id", ""))
@@ -534,14 +530,16 @@ func test_achievement_ids_unique_and_well_formed() -> void:
 		seen[id] = true
 		assert_false(str(achievement.get("title", "")).is_empty(), "empty title: " + id)
 		assert_false(str(achievement.get("description", "")).is_empty(), "empty description: " + id)
-	assert_eq(definitions.size(), AchievementEvaluator.EVOLUTION_ACHIEVEMENTS.size() + 2)
+	assert_eq(definitions.size(), 4)
 
 
 func test_evolution_achievement_pairs_are_complete() -> void:
-	for def in AchievementEvaluator.EVOLUTION_ACHIEVEMENTS:
-		assert_false(str(def.get("post_key", "")).is_empty(), "missing post_key")
-		var achievement: Dictionary = def.get("achievement", {})
-		assert_false(str(achievement.get("id", "")).is_empty(), "missing achievement id")
+	for achievement in Catalog.achievements():
+		for rule in achievement.get("rules", []):
+			if str(rule.get("name", "")) != Catalog.RULE_TWINS_EVOLUTION:
+				continue
+			assert_false(str(rule.get("post_key", "")).is_empty(), "missing post_key")
+			assert_false(str(achievement.get("id", "")).is_empty(), "missing achievement id")
 
 
 func test_tuning_constants_match_documented_values() -> void:

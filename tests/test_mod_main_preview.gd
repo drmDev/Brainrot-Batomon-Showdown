@@ -7,7 +7,7 @@ extends "test_runner.gd"
 const ModMain = preload("../mod_main.gd")
 const ToastCatalog = preload("../notifications/toast_catalog.gd")
 const ReactionSounds = preload("../audio/reaction_sounds.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 
 ## Mirrors the real registry's contract: only ids with a sound row are recorded.
@@ -45,23 +45,23 @@ func _preview(entry_id: String):
 
 
 func test_preview_over_9000_plays_sound_and_submits_toast() -> void:
-	var result = _preview(ReactionDefinitions.OVER_9000)
+	var result = _preview(Catalog.OVER_9000)
 	assert_false(result["entry"].is_empty(), "over_9000 must be in the catalog")
-	assert_eq(result["sounds"].played, [ReactionDefinitions.OVER_9000])
+	assert_eq(result["sounds"].played, [Catalog.OVER_9000])
 	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
 	result["mod"].free()
 
 
 func test_preview_seven_or_more_lives_plays_fanfare_and_submits_toast() -> void:
-	var result = _preview(ReactionDefinitions.SEVEN_OR_MORE_LIVES)
+	var result = _preview(Catalog.SEVEN_OR_MORE_LIVES)
 	assert_false(result["entry"].is_empty(), "7_or_more_lives must be in the catalog")
-	assert_eq(result["sounds"].played, [ReactionDefinitions.SEVEN_OR_MORE_LIVES])
+	assert_eq(result["sounds"].played, [Catalog.SEVEN_OR_MORE_LIVES])
 	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
 	result["mod"].free()
 
 
 func test_preview_other_reaction_stays_silent_but_submits_toast() -> void:
-	var result = _preview(ReactionDefinitions.SIX_SEVEN)
+	var result = _preview(Catalog.SIX_SEVEN)
 	assert_false(result["entry"].is_empty(), "six_seven must be in the catalog")
 	assert_empty(result["sounds"].played)
 	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
@@ -72,11 +72,11 @@ func test_reaction_sound_mapping_is_table_driven() -> void:
 	var mod = ModMain.new()
 	var sounds = FakeSoundRegistry.new()
 	mod._reaction_sounds = sounds
-	mod._play_reaction_sound(ReactionDefinitions.OVER_9000)
-	mod._play_reaction_sound(ReactionDefinitions.SEVEN_OR_MORE_LIVES)
-	mod._play_reaction_sound(ReactionDefinitions.SIX_NINE)
+	mod._play_reaction_sound(Catalog.OVER_9000)
+	mod._play_reaction_sound(Catalog.SEVEN_OR_MORE_LIVES)
+	mod._play_reaction_sound(Catalog.SIX_NINE)
 	assert_eq(
 		sounds.played,
-		[ReactionDefinitions.OVER_9000, ReactionDefinitions.SEVEN_OR_MORE_LIVES],
+		[Catalog.OVER_9000, Catalog.SEVEN_OR_MORE_LIVES],
 	)
 	mod.free()

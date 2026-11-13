@@ -13,8 +13,9 @@ extends RefCounted
 ##
 ## Each returned reaction is {"id": String, "detail": String}.
 ##
-## Reaction definitions live in reactions/reaction_definitions.gd. This file only
-## evaluates them; adding a reaction is one block in that file.
+## Reaction metadata and checks live in catalog/brain_rot_catalog.gd. This file
+## owns occurrence tracking and the battle tie-break; the catalog owns the
+## per-reaction conditions.
 ##
 ## Occurrence semantics:
 ## - Run-scoped: triggers once per run, the first time a matching snapshot is seen.
@@ -36,27 +37,20 @@ extends RefCounted
 ## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
 ## can allow a reaction to trigger again within a continuing run.
 
-const ReactionDefinitions = preload("reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 # Evaluation scope labels for registered_rows() (dev tooling / catalog).
-const SCOPE_RUN := ReactionDefinitions.SCOPE_RUN
-const SCOPE_BATTLE := ReactionDefinitions.SCOPE_BATTLE
-const SCOPE_OUTCOME := ReactionDefinitions.SCOPE_OUTCOME
+const SCOPE_RUN := Catalog.SCOPE_RUN
+const SCOPE_BATTLE := Catalog.SCOPE_BATTLE
+const SCOPE_OUTCOME := Catalog.SCOPE_OUTCOME
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
 
-## Every registered trigger with its evaluation scope. Dev tooling and schema
-## tests iterate this so a new definition cannot be forgotten.
+## Every registered reaction scope. Dev tooling and schema tests iterate this so a
+## new reaction cannot be forgotten.
 static func registered_rows() -> Array:
-	var rows: Array = []
-	for definition in ReactionDefinitions.DEFINITIONS:
-		var id := str(definition.get("id", ""))
-		for trigger in definition.get("triggers", []):
-			var row: Dictionary = trigger.duplicate()
-			row["id"] = id
-			rows.append({"scope": str(trigger.get("scope", "")), "row": row})
-	return rows
+	return Catalog.registered_rows()
 
 
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
@@ -71,27 +65,17 @@ func poll(run_snapshot: Dictionary) -> Array:
 	if run_snapshot.is_empty():
 		return triggered
 
-	for definition in ReactionDefinitions.DEFINITIONS:
+	for definition in Catalog.reactions():
 		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		var details: PackedStringArray = []
-		for trigger in definition.get("triggers", []):
-			if str(trigger.get("scope", "")) != SCOPE_RUN:
-				continue
-			var detail := _conditions_detail(
-				trigger.get("when", []),
-				run_snapshot,
-				ReactionDefinitions.FIELDS,
-			)
-			if not detail.is_empty():
-				details.append(detail)
-		if details.is_empty():
+		var detail := Catalog.run_detail(id, run_snapshot)
+		if detail.is_empty():
 			continue
 		_occurrences[id] = 1
 		triggered.append({
 			"id": id,
-			"detail": _format_detail(definition, ", ".join(details)),
+			"detail": _format_detail(definition, detail),
 		})
 	return triggered
 
@@ -112,27 +96,26 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 		team = []
 
 	if units is Array:
-		for definition in ReactionDefinitions.DEFINITIONS:
+		for definition in Catalog.reactions():
 			var id := str(definition.get("id", ""))
 			if id.is_empty() or _battle_fired.has(id):
 				continue
-			for trigger in definition.get("triggers", []):
-				if str(trigger.get("scope", "")) != SCOPE_BATTLE:
-					continue
-				var found := _find_battle_match(units, trigger)
-				if found.is_empty():
-					continue
-				_battle_fired[id] = true
-				var detail := "%s %s %d" % [
-					_species_display_name_at(team, int(found.get("slot", -1))),
-					str(found.get("label", "")),
-					int(found.get("value", 0)),
-				]
-				triggered.append({
-					"id": id,
-					"detail": _format_detail(definition, detail),
-				})
-				break
+			var rule := Catalog.battle_rule(id)
+			if rule.is_empty():
+				continue
+			var found := _find_battle_match(units, rule)
+			if found.is_empty():
+				continue
+			_battle_fired[id] = true
+			var detail := "%s %s %d" % [
+				_species_display_name_at(team, int(found.get("slot", -1))),
+				str(found.get("label", "")),
+				int(found.get("value", 0)),
+			]
+			triggered.append({
+				"id": id,
+				"detail": _format_detail(definition, detail),
+			})
 
 	_poll_battle_outcomes(triggered, battle_snapshot)
 	return triggered
@@ -145,26 +128,18 @@ func _poll_battle_outcomes(triggered: Array, battle_snapshot: Dictionary) -> voi
 	var outcome = battle_snapshot.get("outcome")
 	if not outcome is Dictionary:
 		return
-	for definition in ReactionDefinitions.DEFINITIONS:
+	for definition in Catalog.reactions():
 		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		for trigger in definition.get("triggers", []):
-			if str(trigger.get("scope", "")) != SCOPE_OUTCOME:
-				continue
-			var detail := _conditions_detail(
-				trigger.get("when", []),
-				outcome,
-				ReactionDefinitions.OUTCOME_FIELDS,
-			)
-			if detail.is_empty():
-				continue
-			_occurrences[id] = 1
-			triggered.append({
-				"id": id,
-				"detail": _format_detail(definition, detail),
-			})
-			break
+		var detail := Catalog.outcome_detail(id, outcome)
+		if detail.is_empty():
+			continue
+		_occurrences[id] = 1
+		triggered.append({
+			"id": id,
+			"detail": _format_detail(definition, detail),
+		})
 
 
 ## Clear all tracking. Call at a verified run transition.
@@ -191,139 +166,15 @@ func _format_detail(definition: Dictionary, detail: String) -> String:
 	return message.replace("{detail}", detail)
 
 
-## "Sunsage level 3" when the owned team or bench contains a matching unit, else "".
-func _owns_detail(spec, snapshot: Dictionary) -> String:
-	if not spec is Dictionary:
-		return ""
-	var species := str(spec.get("species", ""))
-	var level_condition = spec.get("level")
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
-			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != species:
-				continue
-			var level = monster.get("level")
-			if typeof(level) != TYPE_INT:
-				continue
-			if level_condition is Array and level_condition.size() == 2:
-				if not _compare(int(level), str(level_condition[0]), int(level_condition[1])):
-					continue
-			return "%s level %d" % [_format_species_name(species), int(level)]
-	return ""
-
-
-## Detail line for a `when` list, or "" when the conditions do not match.
-##
-## Conditions are ANDed. A leaf contributes "<Label> <actual>" to the detail. An
-## `any` block matches when at least one leaf matches and contributes every
-## matching leaf, so "Lives 6, Day 7, Wins 7" is produced when both day and wins
-## match. Numeric fields must be present ints; anything else does not match.
-func _conditions_detail(conditions, snapshot: Dictionary, fields: Dictionary) -> String:
-	if not conditions is Array:
-		return ""
-	var parts: PackedStringArray = []
-	for condition in conditions:
-		if condition is Dictionary and condition.has("any"):
-			var any_list = condition["any"]
-			if not any_list is Array:
-				return ""
-			var any_parts: PackedStringArray = []
-			for sub in any_list:
-				if sub is Array:
-					var text := _leaf_detail(sub, snapshot, fields)
-					if not text.is_empty():
-						any_parts.append(text)
-			if any_parts.is_empty():
-				return ""
-			parts.append_array(any_parts)
-		elif condition is Dictionary and condition.has("owns"):
-			var text := _owns_detail(condition["owns"], snapshot)
-			if text.is_empty():
-				return ""
-			parts.append(text)
-		elif condition is Array:
-			var text := _leaf_detail(condition, snapshot, fields)
-			if text.is_empty():
-				return ""
-			parts.append(text)
-		else:
-			return ""
-	return ", ".join(parts)
-
-
-## "<Label> <actual>" for a matching leaf, or "" when it does not match.
-func _leaf_detail(condition: Array, snapshot: Dictionary, fields: Dictionary) -> String:
-	if condition.size() != 3:
-		return ""
-	var field := str(condition[0])
-	var op := str(condition[1])
-	var info = fields.get(field)
-	if not info is Dictionary:
-		return ""
-	var key := str(info.get("key", ""))
-	var label := str(info.get("label", field))
-	if str(info.get("type", "int")) == "string":
-		var actual = snapshot.get(key)
-		if typeof(actual) != TYPE_STRING:
-			return ""
-		if not _compare_string(str(actual), op, str(condition[2])):
-			return ""
-		return "%s %s" % [label, str(actual)]
-	var actual = snapshot.get(key)
-	if typeof(actual) != TYPE_INT:
-		return ""
-	if not _compare(int(actual), op, int(condition[2])):
-		return ""
-	return "%s %d" % [label, int(actual)]
-
-
-## The one comparison implementation shared by every scope. Unknown ops warn and
-## never match, so a typo cannot silently behave as equality.
-func _compare(actual: int, op: String, expected: int) -> bool:
-	match op:
-		ReactionDefinitions.OP_EQUALS:
-			return actual == expected
-		ReactionDefinitions.OP_NOT_EQUALS:
-			return actual != expected
-		ReactionDefinitions.OP_GREATER_THAN:
-			return actual > expected
-		ReactionDefinitions.OP_GREATER_OR_EQUAL:
-			return actual >= expected
-		ReactionDefinitions.OP_LESS_THAN:
-			return actual < expected
-		ReactionDefinitions.OP_LESS_OR_EQUAL:
-			return actual <= expected
-	push_warning("Brain Rot: unknown reaction comparison '%s'" % op)
-	return false
-
-
-## String comparison for string fields. Only eq/ne are meaningful.
-func _compare_string(actual: String, op: String, expected: String) -> bool:
-	match op:
-		ReactionDefinitions.OP_EQUALS:
-			return actual == expected
-		ReactionDefinitions.OP_NOT_EQUALS:
-			return actual != expected
-	push_warning("Brain Rot: unsupported string comparison '%s'" % op)
-	return false
-
-
-## Lowest player-side slot with a metric satisfying `trigger`, plus the first
+## Lowest player-side slot with a metric satisfying `rule`, plus the first
 ## matching metric label in BATTLE_METRIC_ORDER and the actual total. Returns {}
 ## when nothing matches.
-func _find_battle_match(units: Array, trigger: Dictionary) -> Dictionary:
-	var total_condition = trigger.get("total")
-	if not total_condition is Array or total_condition.size() != 2:
-		return {}
-	var op := str(total_condition[0])
-	var expected := int(total_condition[1])
-	var metric_labels = trigger.get("metrics")
+func _find_battle_match(units: Array, rule: Dictionary) -> Dictionary:
+	var expected := int(rule.get("value", 0))
+	var strict := bool(rule.get("strict", false))
+	var metric_labels = rule.get("metrics")
 	if not metric_labels is Array:
-		metric_labels = ReactionDefinitions.BATTLE_METRIC_ORDER
+		metric_labels = Catalog.BATTLE_METRIC_ORDER
 
 	var best_slot := -1
 	var best_label := ""
@@ -341,19 +192,21 @@ func _find_battle_match(units: Array, trigger: Dictionary) -> Dictionary:
 		# A lower slot already matched, so this unit cannot win.
 		if best_slot >= 0 and slot >= best_slot:
 			continue
-		for label in ReactionDefinitions.BATTLE_METRIC_ORDER:
+		for label in Catalog.BATTLE_METRIC_ORDER:
 			if not metric_labels.has(label):
 				continue
-			var key := str(ReactionDefinitions.BATTLE_METRICS.get(label, ""))
+			var key := str(Catalog.BATTLE_METRICS.get(label, ""))
 			var value = unit.get(key)
 			# The reader emits floats for battle counters (e.g. heal=420.0), so
 			# accept both numeric types and compare the integer total.
 			if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
 				continue
-			if _compare(int(value), op, expected):
+			var actual := int(value)
+			var matched := actual > expected if strict else actual == expected
+			if matched:
 				best_slot = slot
 				best_label = label
-				best_value = int(value)
+				best_value = actual
 				break
 	if best_slot < 0:
 		return {}

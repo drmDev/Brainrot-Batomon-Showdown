@@ -9,10 +9,10 @@ extends "test_runner.gd"
 
 const ModMain = preload("../mod_main.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
-const ReactionDefinitions = preload("../reactions/reaction_definitions.gd")
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
-const SIX_SEVEN := ReactionDefinitions.SIX_SEVEN
-const SIX_NINE := ReactionDefinitions.SIX_NINE
+const SIX_SEVEN := Catalog.SIX_SEVEN
+const SIX_NINE := Catalog.SIX_NINE
 
 
 ## Records play_all() calls so a test can assert nothing fired.

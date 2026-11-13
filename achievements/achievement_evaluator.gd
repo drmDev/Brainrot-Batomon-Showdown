@@ -8,37 +8,32 @@ extends RefCounted
 ## Both return an empty Array most polls. The caller owns persistence
 ## (achievement_store) and display (achievement_panel).
 ##
+## Definitions live in catalog/brain_rot_catalog.gd. Each achievement entry lists
+## one or more `rules`; this file dispatches on the rule name and keeps the stateful
+## logic typed here. Adding a simple achievement is one catalog block; a new rule
+## shape adds one handler below.
+##
 ## Snapshot contract (see game_snapshot_reader.gd): unknown values are ABSENT keys.
 ## Defaults live here, in the rules: a monster without "level" counts as level 1, and
 ## a run without "trainer_id" has no trainer.
 ##
-## Achievements:
-## - "So I started blasting" (poll, run snapshot)
-##   Trainer: Gentleman
-##   Trigger: a level-2 Rhizuka (the trainer's common level-2 strat) is owned no later
-##   than Day 5. Day is read from the snapshot's current_round (the field the mod
-##   already logs as "Day"). State-based: awards as soon as the condition is true.
-## - "Oh Yeah!" / "Herd U Liek Mudkipz" (poll, run snapshot)
-##   Trainer: Twins
-##   Trigger: a level-2 pre-evolution evolves into its level-3 form. Twins doubles the
-##   leveled unit, so the evolution produces two level-3 units.
-##     Beetbud (level 2) -> Beetdown (level 3)      -> "Oh Yeah!"
-##     Frillet (level 2) -> Dewlotl (level 3)       -> "Herd U Liek Mudkipz"
-##   Detection arms when the level-2 pre-evolution is seen and awards when the evolved
-##   count rises by at least 2 from that baseline. The game can apply the Twins double
-##   across several polls (see the runtime log: one Dewlotl appears, then the second on
-##   the next poll), so the baseline stays armed for a short window instead of requiring
-##   both copies in one poll. Arming avoids awarding on a plain purchase.
-## - "Big Dog, Best Dog" (poll_battle, battle snapshot)
-##   Trigger: a single Cinnabark unit generates more than 1,000,000 shield in one battle.
-##   Evaluated once the battle is over (the detector decides when), so the toast lands
-##   on the results screen. Reads the snapshot's battle_units records:
-##     battle_units[]: team_id == 0 (player side), slot_index (board slot), shield_granted
-##   These fields are the ones the verified examples/MyBattleStats mod reads.
-##   Species is resolved by mapping slot_index to the player run's team slot, because
-##   battle unit records do not expose a species key.
-##   Semantics: PER UNIT, not per slot. Two sub-threshold records in the same slot do
-##   not add up. Twins duplicates that share a slot are therefore judged individually.
+## Rules:
+## - RULE_GENTLEMAN_RHIZUKA (run): a level-2 Rhizuka (the trainer's common level-2
+##   strat) is owned no later than Day 5. Day is the snapshot's current_round.
+## - RULE_TWINS_EVOLUTION (run): a level-2 pre-evolution evolves into its level-3
+##   form. Twins doubles the leveled unit, so the evolution produces two level-3
+##   units. The rule's `post_key` names the evolved species.
+## - RULE_GALVANINE_SHOCK (battle): a single Galvanine unit inflicts 1000+ shock in
+##   one battle.
+## - RULE_CINNABARK_SHIELD (battle): a single Cinnabark unit generates more than
+##   1,000,000 shield in one battle. Evaluated once the battle is over (the detector
+##   decides when), so the toast lands on the results screen.
+##
+## Occurrence: tracked per (achievement id, rule name). An achievement is considered
+## awarded when any of its rules has fired. Entries with `track: false` are stateless
+## (the caller owns once-per-battle semantics).
+
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 const TWINS_TRAINER_ID := "twins"
 const BEETDOWN_KEY := "monster.name.beetdown"
@@ -57,52 +52,8 @@ const GALVANINE_SHOCK_THRESHOLD := 1000  # At least this much shock in one battl
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 const BIG_DOG_SHIELD_THRESHOLD := 1000000.0  # Strictly over one million shield
 
-const OH_YEAH := {
-	"id": "oh_yeah",
-	"title": "Oh Yeah!",
-	"description": "Made double kool aid man level 3s at once !",
-}
-
-const HERD_U_LIEK_MUDKIPZ := {
-	"id": "herd_u_liek_mudkipz",
-	"title": "Herd U Liek Mudkipz",
-	"description": "Made double Dewlotl level 3s at once !",
-}
-
-const SO_I_STARTED_BLASTING := {
-	"id": "so_i_started_blasting",
-	"title": "So I started blasting",
-	"description": "Got a level 2 Rhizuka by Day 5, or 1000+ shock with Galvanine",
-}
-
-const BIG_DOG := {
-	"id": "big_dog_best_dog",
-	"title": "Big Dog, Best Dog",
-	"description": "Reach over 1 mil shield with Cinnabark",
-}
-
-## Every registered achievement definition, in stable order. Dev tooling (the
-## toast preview) and schema checks read this instead of repeating the list.
-const ALL_ACHIEVEMENTS := [
-	OH_YEAH,
-	HERD_U_LIEK_MUDKIPZ,
-	SO_I_STARTED_BLASTING,
-	BIG_DOG,
-]
-
-## Twins double-evolution achievements: same rule, different evolved species.
-const EVOLUTION_ACHIEVEMENTS := [
-	{"achievement": OH_YEAH, "post_key": BEETDOWN_KEY},
-	{"achievement": HERD_U_LIEK_MUDKIPZ, "post_key": DEWLOTL_KEY},
-]
-
-# Twins evolution achievements awarded this run (suppresses repeat polling).
-var _evolution_awarded: Dictionary = {}
-
-# Gentleman Rhizuka achievement: awarded this run (suppresses repeat polling).
-var _rhizuka_awarded := false
-# Galvanine shock achievement: awarded this run (suppresses repeat polling).
-var _galvanine_awarded := false
+# Awarded this run, keyed by "<achievement id>|<rule name>".
+var _awarded: Dictionary = {}
 
 
 ## Poll a run snapshot for newly earned achievements. Returns an Array of achievement
@@ -120,47 +71,30 @@ func poll(run_snapshot: Dictionary) -> Array:
 		return []
 
 	var owned := _collect_owned_species(run_snapshot)
-
 	var earned: Array = []
-	if is_gentleman:
-		earned.append_array(_poll_gentleman(run_snapshot, owned))
-	else:
-		_rhizuka_awarded = false
 
-	if not is_twins:
-		_reset_evolution_state()
-		return earned
-
-	for def in EVOLUTION_ACHIEVEMENTS:
-		var achievement: Dictionary = def["achievement"]
-		var id := str(achievement.get("id", ""))
-		if _evolution_awarded.has(id):
+	for entry in Catalog.achievements():
+		var id := str(entry.get("id", ""))
+		if id.is_empty() or _is_awarded(entry):
 			continue
-		var post_record: Dictionary = owned.get(str(def["post_key"]), {})
-		var levels: Dictionary = post_record.get("levels", {})
-		if int(levels.get(EVOLVED_LEVEL, 0)) >= EVOLUTION_COPIES:
-			_evolution_awarded[id] = true
-			earned.append(achievement.duplicate(true))
+		for rule in entry.get("rules", []):
+			if str(rule.get("scope", "")) != Catalog.SCOPE_RUN:
+				continue
+			if not _run_rule_applies(str(rule.get("name", "")), is_gentleman, is_twins):
+				continue
+			if _run_rule_matches(rule, run_snapshot, owned):
+				_mark_awarded(id, str(rule.get("name", "")))
+				earned.append(_award_payload(entry))
+				break
+
+	# Preserve the original reset behavior: a trainer that cannot use a rule clears
+	# that rule's awards so a later run with the same trainer can award again.
+	if not is_gentleman:
+		_clear_awards_for_rule(Catalog.RULE_GENTLEMAN_RHIZUKA)
+	if not is_twins:
+		_clear_awards_for_rule(Catalog.RULE_TWINS_EVOLUTION)
 
 	return earned
-
-
-## Gentleman: owns a level-2 Rhizuka on Day 5 or earlier.
-func _poll_gentleman(run_snapshot: Dictionary, owned: Dictionary) -> Array:
-	if _rhizuka_awarded or _galvanine_awarded:
-		return []
-
-	var day := int(run_snapshot.get("current_round", -1))
-	if day < 1 or day > GENTLEMAN_DAY_LIMIT:
-		return []
-
-	var record: Dictionary = owned.get(RHIZUKA_KEY, {})
-	var levels: Dictionary = record.get("levels", {})
-	for level in levels:
-		if int(level) >= RHIZUKA_MIN_LEVEL:
-			_rhizuka_awarded = true
-			return [SO_I_STARTED_BLASTING.duplicate(true)]
-	return []
 
 
 ## Poll a completed battle snapshot for battle-scoped achievements. Returns newly
@@ -175,13 +109,86 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 		return []
 
 	var earned: Array = []
-	if not _galvanine_awarded and not _rhizuka_awarded:
-		if _max_galvanine_shock(battle_snapshot) >= GALVANINE_SHOCK_THRESHOLD:
-			_galvanine_awarded = true
-			earned.append(SO_I_STARTED_BLASTING.duplicate(true))
-	if _max_cinnabark_unit_shield(battle_snapshot) > BIG_DOG_SHIELD_THRESHOLD:
-		earned.append(BIG_DOG.duplicate(true))
+	for entry in Catalog.achievements():
+		var id := str(entry.get("id", ""))
+		if id.is_empty():
+			continue
+		var tracked := bool(entry.get("track", true))
+		if tracked and _is_awarded(entry):
+			continue
+		for rule in entry.get("rules", []):
+			if str(rule.get("scope", "")) != Catalog.SCOPE_BATTLE:
+				continue
+			if _battle_rule_matches(rule, battle_snapshot):
+				if tracked:
+					_mark_awarded(id, str(rule.get("name", "")))
+				earned.append(_award_payload(entry))
+				break
 	return earned
+
+
+## Clear all run-scoped tracking. Call at a verified run transition so consecutive
+## runs with the same trainer cannot retain flags or baselines.
+func reset_run() -> void:
+	_reset()
+
+
+func _reset() -> void:
+	_awarded.clear()
+
+
+## Does this rule apply to the current trainer? Run rules are trainer-gated.
+func _run_rule_applies(rule_name: String, is_gentleman: bool, is_twins: bool) -> bool:
+	match rule_name:
+		Catalog.RULE_GENTLEMAN_RHIZUKA:
+			return is_gentleman
+		Catalog.RULE_TWINS_EVOLUTION:
+			return is_twins
+	return false
+
+
+## Does a run-scoped rule match the snapshot?
+func _run_rule_matches(rule: Dictionary, run_snapshot: Dictionary, owned: Dictionary) -> bool:
+	match str(rule.get("name", "")):
+		Catalog.RULE_GENTLEMAN_RHIZUKA:
+			return _matches_gentleman_rhizuka(run_snapshot, owned)
+		Catalog.RULE_TWINS_EVOLUTION:
+			return _matches_twins_evolution(rule, owned)
+	return false
+
+
+## Does a battle-scoped rule match the snapshot?
+func _battle_rule_matches(rule: Dictionary, battle_snapshot: Dictionary) -> bool:
+	match str(rule.get("name", "")):
+		Catalog.RULE_GALVANINE_SHOCK:
+			return _max_galvanine_shock(battle_snapshot) >= GALVANINE_SHOCK_THRESHOLD
+		Catalog.RULE_CINNABARK_SHIELD:
+			return _max_cinnabark_unit_shield(battle_snapshot) > BIG_DOG_SHIELD_THRESHOLD
+	return false
+
+
+## Gentleman: owns a level-2 Rhizuka on Day 5 or earlier.
+func _matches_gentleman_rhizuka(run_snapshot: Dictionary, owned: Dictionary) -> bool:
+	var day := int(run_snapshot.get("current_round", -1))
+	if day < 1 or day > GENTLEMAN_DAY_LIMIT:
+		return false
+
+	var record: Dictionary = owned.get(RHIZUKA_KEY, {})
+	var levels: Dictionary = record.get("levels", {})
+	for level in levels:
+		if int(level) >= RHIZUKA_MIN_LEVEL:
+			return true
+	return false
+
+
+## Twins: owns a level-3 evolved unit named by the rule's `post_key`.
+func _matches_twins_evolution(rule: Dictionary, owned: Dictionary) -> bool:
+	var post_key := str(rule.get("post_key", ""))
+	if post_key.is_empty():
+		return false
+	var record: Dictionary = owned.get(post_key, {})
+	var levels: Dictionary = record.get("levels", {})
+	return int(levels.get(EVOLVED_LEVEL, 0)) >= EVOLUTION_COPIES
 
 
 ## Highest shock inflicted by a SINGLE player-side Galvanine unit record.
@@ -241,21 +248,39 @@ func _max_cinnabark_unit_shield(battle_snapshot: Dictionary) -> float:
 	return best
 
 
-## Clear all run-scoped tracking. Call at a verified run transition so consecutive
-## runs with the same trainer cannot retain flags or baselines.
-func reset_run() -> void:
-	_reset()
+## Award key for one (achievement, rule) pair.
+func _award_key(id: String, rule_name: String) -> String:
+	return "%s|%s" % [id, rule_name]
 
 
-func _reset() -> void:
-	_reset_evolution_state()
-	_rhizuka_awarded = false
-	_galvanine_awarded = false
+## Has any rule of this achievement already fired this run?
+func _is_awarded(entry: Dictionary) -> bool:
+	var id := str(entry.get("id", ""))
+	for rule in entry.get("rules", []):
+		if _awarded.has(_award_key(id, str(rule.get("name", "")))):
+			return true
+	return false
 
 
-## Clear only the Twins evolution awards (keeps the Gentleman flag).
-func _reset_evolution_state() -> void:
-	_evolution_awarded.clear()
+func _mark_awarded(id: String, rule_name: String) -> void:
+	_awarded[_award_key(id, rule_name)] = true
+
+
+## Clear every award produced by one rule, leaving other rules' awards intact.
+func _clear_awards_for_rule(rule_name: String) -> void:
+	var suffix := "|" + rule_name
+	for key in _awarded.keys():
+		if str(key).ends_with(suffix):
+			_awarded.erase(key)
+
+
+## The dictionary shape the caller persists and displays.
+func _award_payload(entry: Dictionary) -> Dictionary:
+	return {
+		"id": str(entry.get("id", "")),
+		"title": str(entry.get("title", "")),
+		"description": str(entry.get("description", "")),
+	}
 
 
 ## One pass over team + bench: species key -> {"count": int, "levels": {level: count}}.
