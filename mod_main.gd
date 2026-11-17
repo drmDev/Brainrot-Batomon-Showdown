@@ -45,6 +45,7 @@ var _toast_preview_panel = null
 var _reaction_evaluator = null
 var _reaction_player = null
 var _reaction_sounds = null
+var _species_icons = null
 var _last_progress_signature := ""
 
 # Run-scoped reaction phase gate. "shop" while the shop is active, "deferred"
@@ -127,10 +128,17 @@ func _setup_reactions() -> void:
 	if ReactionSounds != null:
 		_reaction_sounds = ReactionSounds.new(self)
 
-	# Reactions log, submit to the shared toast queue, and forward their id to the
-	# table-driven sound sink.
+	# Species icon lookup for monster-involving reactions. Copied from Creature
+	# Comforts (core/species_icons.gd) so Brain Rot stays standalone.
+	var SpeciesIcons = load(base_dir.path_join("catalog/species_icons.gd"))
+	if SpeciesIcons != null:
+		_species_icons = SpeciesIcons.new()
+
+	# Reactions log, submit to the shared toast queue, forward their id to the
+	# table-driven sound sink, and resolve a monster icon when one is involved.
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
-	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification, _play_reaction_sound)
+	var icon_fn: Callable = _species_icons.icon_for if _species_icons != null else Callable()
+	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification, _play_reaction_sound, icon_fn)
 
 
 ## Play the extra audio for a reaction, if the table has one.
@@ -170,7 +178,13 @@ func _preview_toast(entry: Dictionary) -> void:
 	# the same table-driven sound mapping.
 	if str(entry.get("kind", "")) == _toast_catalog_script.KIND_REACTION:
 		_play_reaction_sound(str(entry.get("id", "")))
-	_submit_notification(_toast_catalog_script.make_request(entry))
+	var request = _toast_catalog_script.make_request(entry)
+	var species_key := str(entry.get("species", ""))
+	if not species_key.is_empty() and _species_icons != null:
+		var texture = _species_icons.icon_for(species_key)
+		if texture is Texture2D:
+			request.icon_texture = texture
+	_submit_notification(request)
 
 
 ## Create/open the session log and write the startup banner (Creature Comforts layout).

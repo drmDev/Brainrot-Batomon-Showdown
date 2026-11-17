@@ -14,6 +14,7 @@ var _header_label: Label
 var _title_label: Label
 var _description_label: Label
 var _badge_label: Label
+var _badge_texture: Texture2D = null
 var _panel_style: StyleBoxFlat
 var _badge_style: StyleBoxFlat
 var _badge_rect := Rect2()
@@ -71,6 +72,8 @@ func present(request) -> void:
 		"font_size",
 		Styles.BADGE_FONT_SIZE if icon.length() <= 2 else Styles.BADGE_FONT_SIZE_SMALL,
 	)
+	_badge_texture = request.icon_texture if request.icon_texture is Texture2D else null
+	_badge_label.visible = _badge_texture == null
 	layout()
 	show()
 
@@ -122,3 +125,19 @@ func place_bottom_right(stack_offset: float) -> void:
 func _draw() -> void:
 	_panel_style.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
 	_badge_style.draw(get_canvas_item(), _badge_rect)
+	if _badge_texture is Texture2D:
+		_draw_texture_fit(_badge_texture, _badge_rect)
+
+
+## Draw a texture inside `rect` at its natural aspect ratio (contain), centred.
+func _draw_texture_fit(tex: Texture2D, rect: Rect2) -> void:
+	if tex == null:
+		return
+	var tex_size := tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var scale := minf(rect.size.x / tex_size.x, rect.size.y / tex_size.y)
+	var draw_size := tex_size * scale
+	var pos := rect.position + (rect.size - draw_size) * 0.5
+	pos.y -= 2.0 # move it up a couple pixels for better alignment
+	draw_texture_rect(tex, Rect2(pos, draw_size), false)

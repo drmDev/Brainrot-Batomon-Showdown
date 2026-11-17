@@ -22,7 +22,7 @@ signal expired(request, slot)
 enum Result { REJECTED_INVALID, DROPPED_DUPLICATE, SHOWN, QUEUED }
 
 const DEFAULT_MAX_VISIBLE := 3
-const FALLBACK_DURATION_MS := 4000  # matches NotificationRequest.DEFAULT_DURATION_MS
+const FALLBACK_DURATION_MS := 6000  # matches NotificationRequest.DEFAULT_DURATION_MS
 
 var _max_visible: int
 var _now_fn: Callable

@@ -77,6 +77,7 @@ func poll(run_snapshot: Dictionary) -> Array:
 		triggered.append({
 			"id": id,
 			"detail": _format_detail(definition, detail),
+			"species_key": _species_key_from_definition(definition),
 		})
 	return triggered
 
@@ -116,6 +117,7 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 			triggered.append({
 				"id": id,
 				"detail": _format_detail(definition, detail),
+				"species_key": _species_key_at(team, int(found.get("slot", -1))),
 			})
 
 	_poll_battle_outcomes(triggered, battle_snapshot)
@@ -234,6 +236,23 @@ func _abbreviate_number(value: int) -> String:
 	if value >= 1000:
 		return "%.1fK" % (float(value) / 1000.0)
 	return str(value)
+
+
+## Species key of the monster in a team slot, or "" when unavailable. This is the
+## value the presentation layer uses to look up the monster's icon.
+func _species_key_at(team: Array, slot: int) -> String:
+	if slot < 0 or slot >= team.size():
+		return ""
+	var entry = team[slot]
+	if not entry is Dictionary:
+		return ""
+	return str(entry.get("name_key", ""))
+
+
+## Static species key authored on a reaction definition, or "" when absent. Run
+## reactions tied to a specific monster (apes/oh_yeah/herd) carry this metadata.
+func _species_key_from_definition(definition: Dictionary) -> String:
+	return str(definition.get("species", ""))
 
 
 ## Display name of the species in a team slot, or "Unknown" when unavailable.

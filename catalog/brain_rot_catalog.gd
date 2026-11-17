@@ -12,6 +12,7 @@ extends RefCounted
 ##     "title": String,                            # required, toast title
 ##     "description": String,                      # required, toast body / preview text
 ##     "icon": String,                             # optional, badge text; derived from id when absent
+##     "species": String,                          # optional, species name_key for the monster icon
 ##     "scopes": [SCOPE_RUN | SCOPE_BATTLE | SCOPE_OUTCOME, ...],  # required
 ##     "message": String,                          # optional, "{detail}" is replaced
 ##     "sound": {"file": String, "volume_db": float},  # optional
@@ -110,6 +111,7 @@ const ENTRIES := [
 		"title": "APES TOGETHER, STRONG!",
 		"description": "Double sunsage!",
 		"icon": "AT",
+		"species": "monster.name.sunsage",
 		"scopes": [SCOPE_RUN],
 	},
 	{
@@ -118,6 +120,7 @@ const ENTRIES := [
 		"title": "BIG DOG, BEST DOG!",
 		"description": "Reach over 1 mil shield with Cinnabark",
 		"icon": "BD",
+		"species": "monster.name.cinnabark",
 		"scopes": [SCOPE_BATTLE],
 	},
 	{
@@ -126,6 +129,7 @@ const ENTRIES := [
 		"title": "OH YEAH!",
 		"description": "Double kool aid man!",
 		"icon": "OY",
+		"species": "monster.name.beetdown",
 		"scopes": [SCOPE_RUN],
 	},
 	{
@@ -134,6 +138,7 @@ const ENTRIES := [
 		"title": "HERD U LIEK MUDKIPZ!",
 		"description": "Double Dewlotls!",
 		"icon": "HM",
+		"species": "monster.name.dewlotl",
 		"scopes": [SCOPE_RUN],
 	}
 ]

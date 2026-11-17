@@ -1103,3 +1103,45 @@ func test_converted_reactions_fire_once_per_run() -> void:
 	assert_empty(evaluator.poll(snapshot))
 	evaluator.reset_run()
 	assert_eq(evaluator.poll(snapshot).size(), 1)
+
+
+# --- 13. species_key: monster-involving reactions carry the icon lookup key ---
+
+func test_battle_reaction_carries_species_key_from_matched_slot() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle(_team_two(), [
+		_unit(1, {"damage_dealt": 67}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("species_key", "")), RHIZUKA)
+
+
+func test_run_monster_reactions_carry_species_key() -> void:
+	var cases := [
+		{"id": APES_TOGETHER, "snapshot": _run_with(TWINS, [_monster(SUNSAGE, 3)]), "species": SUNSAGE},
+		{"id": Catalog.OH_YEAH, "snapshot": _run_day(TWINS, 3, [_monster(BEETDOWN, 3)]), "species": BEETDOWN},
+		{"id": Catalog.HERD_U_LIEK_MUDKIPZ, "snapshot": _run_day(TWINS, 3, [_monster(DEWLOTL, 3)]), "species": DEWLOTL},
+	]
+	for case in cases:
+		var evaluator = _new_evaluator()
+		var earned: Array = evaluator.poll(case["snapshot"])
+		assert_eq(earned.size(), 1, str(case["id"]))
+		if earned.size() == 1:
+			assert_eq(str(earned[0].get("species_key", "")), str(case["species"]), str(case["id"]))
+
+
+func test_non_monster_run_reaction_has_empty_species_key() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll(_snap(6, 7))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("species_key", "")), "")
+
+
+func test_outcome_reaction_has_empty_species_key() -> void:
+	var evaluator = _new_evaluator()
+	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 10))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("species_key", "")), "")

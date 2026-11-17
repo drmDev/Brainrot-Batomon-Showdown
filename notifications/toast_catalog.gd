@@ -28,6 +28,7 @@ static func entries() -> Array:
 			"label": "Reaction - %s" % title,
 			"title": title,
 			"description": Catalog.describe_entry(definition),
+			"species": str(definition.get("species", "")),
 		})
 
 	return out

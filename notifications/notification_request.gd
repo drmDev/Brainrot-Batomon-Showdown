@@ -13,7 +13,7 @@ const KIND_REACTION := "reaction"
 
 const HEADER_UNLOCKED := "BRAIN ROT UNLOCKED"
 
-const DEFAULT_DURATION_MS := 4000
+const DEFAULT_DURATION_MS := 6000
 
 var kind := ""
 var event_key := ""
@@ -22,6 +22,7 @@ var title := ""
 var description := ""
 var id := ""
 var icon := ""
+var icon_texture: Texture2D = null
 var duration_ms := DEFAULT_DURATION_MS
 var allow_duplicate := false
 

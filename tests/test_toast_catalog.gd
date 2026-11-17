@@ -90,6 +90,14 @@ func test_find_requires_kind_and_id() -> void:
 	assert_true(ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, "not_real").is_empty())
 
 
+func test_entries_include_species_for_monster_reactions() -> void:
+	var entries := ToastCatalog.entries()
+	var apes := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, Catalog.APES_TOGETHER)
+	assert_eq(str(apes.get("species", "")), "monster.name.sunsage")
+	var numeric := ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, Catalog.SIX_SEVEN)
+	assert_eq(str(numeric.get("species", "")), "")
+
+
 func test_reaction_uses_unlocked_header() -> void:
 	assert_eq(
 		NotificationRequest.header_for(NotificationRequest.KIND_REACTION),

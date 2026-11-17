@@ -90,6 +90,26 @@ func test_every_entry_has_short_icon_text() -> void:
 		assert_true(icon.length() <= 4, "icon too long for " + id + ": " + icon)
 
 
+func test_species_metadata_is_a_valid_name_key_when_present() -> void:
+	for entry in Catalog.ENTRIES:
+		if not entry.has("species"):
+			continue
+		var id := str(entry.get("id", ""))
+		var species := str(entry.get("species", ""))
+		assert_false(species.is_empty(), "empty species for " + id)
+		assert_true(species.begins_with("monster.name."), "species must be a name_key for " + id)
+
+
+func test_monster_run_reactions_have_species() -> void:
+	assert_eq(str(Catalog.entry(Catalog.APES_TOGETHER).get("species", "")), "monster.name.sunsage")
+	assert_eq(str(Catalog.entry(Catalog.OH_YEAH).get("species", "")), "monster.name.beetdown")
+	assert_eq(str(Catalog.entry(Catalog.HERD_U_LIEK_MUDKIPZ).get("species", "")), "monster.name.dewlotl")
+
+
+func test_big_dog_has_static_cinnabark_species() -> void:
+	assert_eq(str(Catalog.entry(Catalog.BIG_DOG).get("species", "")), "monster.name.cinnabark")
+
+
 func test_explicit_icon_wins_over_derived() -> void:
 	assert_eq(Catalog.icon_for(Catalog.SIX_SEVEN), "67")
 	assert_eq(Catalog.icon_for(Catalog.FOUR_TWENTY), "420")
