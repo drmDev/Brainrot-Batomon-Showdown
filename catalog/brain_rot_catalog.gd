@@ -52,7 +52,6 @@ const APES_TOGETHER := "apes_together"
 const BIG_DOG := "big_dog_best_dog"
 const OH_YEAH := "oh_yeah"
 const HERD_U_LIEK_MUDKIPZ := "herd_u_liek_mudkipz"
-const SO_I_STARTED_BLASTING := "so_i_started_blasting"
 
 const ENTRIES := [
 	{
@@ -136,15 +135,7 @@ const ENTRIES := [
 		"description": "Double Dewlotls!",
 		"icon": "HM",
 		"scopes": [SCOPE_RUN],
-	},
-	{
-		"kind": KIND_REACTION,
-		"id": SO_I_STARTED_BLASTING,
-		"title": "SO I STARTED BLASTING!",
-		"description": "Got a level 2 Rhizuka by Day 5",
-		"icon": "SB",
-		"scopes": [SCOPE_RUN],
-	},
+	}
 ]
 
 
@@ -261,8 +252,6 @@ static func run_detail(id: String, snapshot: Dictionary) -> String:
 			return _twins_evolution_detail(snapshot, "monster.name.beetdown", "Beetdown")
 		HERD_U_LIEK_MUDKIPZ:
 			return _twins_evolution_detail(snapshot, "monster.name.dewlotl", "Dewlotl")
-		SO_I_STARTED_BLASTING:
-			return _so_i_started_blasting_detail(snapshot)
 	return ""
 
 
@@ -390,30 +379,6 @@ static func _twins_evolution_detail(snapshot: Dictionary, species_key: String, d
 				return "Trainer twins, %s level %d" % [display_name, int(level)]
 	return ""
 
-
-## Gentleman: owns a level-2+ Rhizuka no later than Day 5.
-static func _so_i_started_blasting_detail(snapshot: Dictionary) -> String:
-	var trainer = snapshot.get("trainer_id")
-	if typeof(trainer) != TYPE_STRING or str(trainer) != "gentleman":
-		return ""
-	var day = _int(snapshot, "current_round")
-	if day == null or int(day) < 1 or int(day) > 5:
-		return ""
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
-			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != "monster.name.rhizuka":
-				continue
-			var level = monster.get("level")
-			if typeof(level) != TYPE_INT:
-				continue
-			if int(level) >= 2:
-				return "Trainer gentleman, Rhizuka level %d" % int(level)
-	return ""
 
 
 static func _seven_or_more_lives_detail(outcome: Dictionary) -> String:

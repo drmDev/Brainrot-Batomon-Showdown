@@ -102,7 +102,20 @@ func _ids(reactions: Array) -> Array:
 
 ## The single expected detail line for a match.
 func _detail(species: String, label: String, value: int) -> String:
-	return "%s %s %d" % [_display_species(species), label, value]
+	return "%s contributed %s %s in battle!" % [
+		_display_species(species),
+		_abbreviate(value),
+		label,
+	]
+
+
+## Test-side mirror of the evaluator's number abbreviation.
+func _abbreviate(value: int) -> String:
+	if value >= 1000000:
+		return "%.1fM" % (float(value) / 1000000.0)
+	if value >= 1000:
+		return "%.1fK" % (float(value) / 1000.0)
+	return str(value)
 
 
 ## Test-side mirror of the evaluator's species display formatting.
@@ -1040,11 +1053,10 @@ func test_apes_together_reset_run_rearms() -> void:
 	assert_eq(evaluator.poll(snapshot).size(), 1)
 
 
-# --- 12. run-scoped reactions: oh_yeah, herd_u_liek_mudkipz, so_i_started_blasting ---
+# --- 12. run-scoped reactions: oh_yeah, herd_u_liek_mudkipz ---
 
 const BEETDOWN := "monster.name.beetdown"
 const DEWLOTL := "monster.name.dewlotl"
-const GENTLEMAN := "gentleman"
 
 
 func _run_day(trainer: String, day: int, team: Array, bench: Array = []) -> Dictionary:
@@ -1083,27 +1095,6 @@ func test_herd_u_liek_mudkipz_triggers_for_twins_with_level3_dewlotl() -> void:
 
 func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
 	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
-
-
-func test_so_i_started_blasting_triggers_for_gentleman_by_day5() -> void:
-	var earned: Array = _new_evaluator().poll(_run_day(GENTLEMAN, 5, [_monster(RHIZUKA, 2)]))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("id", "")), Catalog.SO_I_STARTED_BLASTING)
-		assert_eq(str(earned[0].get("detail", "")), "Trainer gentleman, Rhizuka level 2")
-
-
-func test_so_i_started_blasting_does_not_trigger_after_day5() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(GENTLEMAN, 6, [_monster(RHIZUKA, 2)])))
-
-
-func test_so_i_started_blasting_does_not_trigger_below_level2() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(GENTLEMAN, 3, [_monster(RHIZUKA, 1)])))
-
-
-func test_so_i_started_blasting_does_not_trigger_for_other_trainers() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(RHIZUKA, 2)])))
-
 
 func test_converted_reactions_fire_once_per_run() -> void:
 	var evaluator = _new_evaluator()

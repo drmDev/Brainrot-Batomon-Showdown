@@ -108,10 +108,10 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 			if found.is_empty():
 				continue
 			_battle_fired[id] = true
-			var detail := "%s %s %d" % [
+			var detail := "%s contributed %s %s in battle!" % [
 				_species_display_name_at(team, int(found.get("slot", -1))),
+				_abbreviate_number(int(found.get("value", 0))),
 				str(found.get("label", "")),
-				int(found.get("value", 0)),
 			]
 			triggered.append({
 				"id": id,
@@ -224,6 +224,16 @@ func _find_battle_match(units: Array, team: Array, rule: Dictionary) -> Dictiona
 	if best_slot < 0:
 		return {}
 	return {"slot": best_slot, "label": best_label, "value": best_value}
+
+
+## Abbreviate a large number for the toast: 1,000,000+ becomes "1.0M", 1,000+ becomes
+## "1.0K". Smaller values are shown as-is. Keeps the detail line compact.
+func _abbreviate_number(value: int) -> String:
+	if value >= 1000000:
+		return "%.1fM" % (float(value) / 1000000.0)
+	if value >= 1000:
+		return "%.1fK" % (float(value) / 1000.0)
+	return str(value)
 
 
 ## Display name of the species in a team slot, or "Unknown" when unavailable.
