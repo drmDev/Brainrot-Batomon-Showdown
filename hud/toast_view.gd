@@ -2,8 +2,8 @@ extends Control
 ## ToastView - presentation-only toast. The NotificationManager owns timing.
 ##
 ## Fixed width, explicit label layout (avoids hidden Container sizing),
-## dark-navy/gold style box. The host
-## calls present()/dismiss() and places the view; this script never schedules.
+## dark-navy/gold style box. The host calls present()/dismiss() and places the
+## view; this script never schedules.
 ##
 ## Layout: a left-aligned rounded badge (the request's icon text) spans the full
 ## height, with the three text lines (header, title, description) to its right.

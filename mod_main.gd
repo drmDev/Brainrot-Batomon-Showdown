@@ -15,7 +15,6 @@ extends Node
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
 const VERSION := "0.0.0.44"
-const MOD_ID := "brain_rot"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 # Verified in BatomonHelperBridge (reads shop_state.manager/view). The shop is the
 # start of a day, the only phase where run-scoped reactions are evaluated.
