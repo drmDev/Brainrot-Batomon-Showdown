@@ -11,24 +11,33 @@ const BORDER_COLOR := Color("#f39c12")
 const HEADER_COLOR := Color("#f39c12")
 const TITLE_COLOR := Color.WHITE
 const DESCRIPTION_COLOR := Color("#c8ced8")
+const BADGE_COLOR := Color("#f39c12")
+const BADGE_TEXT_COLOR := Color.WHITE
 
 # Font
 const FONT_NAMES := ["Consolas", "Segoe UI", "Arial"]
 const HEADER_FONT_SIZE := 9
 const TITLE_FONT_SIZE := 12
 const DESCRIPTION_FONT_SIZE := 9
+const BADGE_FONT_SIZE := 12
+const BADGE_FONT_SIZE_SMALL := 9
 
 # Panel chrome
 const PANEL_BORDER_WIDTH := 1
 const PANEL_CORNER_RADIUS := 3
 
 # Toast layout
-const TOAST_WIDTH := 220.0
+const TOAST_WIDTH := 260.0
 const INTERNAL_PADDING := 8.0
 const LABEL_SPACING := 4.0
 const MARGIN_RIGHT := 8.0
 const MARGIN_BOTTOM := 8.0
 const STACK_GAP := 4.0
+
+# Badge (left-aligned icon block)
+const BADGE_SIZE := 34.0
+const BADGE_CORNER_RADIUS := 6
+const BADGE_GAP := 8.0
 
 
 ## Build the toast font (Consolas with system fallbacks).
@@ -45,6 +54,14 @@ static func make_panel_style() -> StyleBoxFlat:
 	style.border_color = BORDER_COLOR
 	style.set_border_width_all(PANEL_BORDER_WIDTH)
 	style.set_corner_radius_all(PANEL_CORNER_RADIUS)
+	return style
+
+
+## Build the left-aligned badge background (flat color, rounded corners, no border).
+static func make_badge_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = BADGE_COLOR
+	style.set_corner_radius_all(BADGE_CORNER_RADIUS)
 	return style
 
 

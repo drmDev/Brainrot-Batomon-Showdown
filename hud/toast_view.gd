@@ -1,16 +1,22 @@
 extends Control
 ## ToastView - presentation-only toast. The NotificationManager owns timing.
 ##
-## Same visuals as the original achievement toast: fixed width, explicit label
-## layout (avoids hidden Container sizing), dark-navy/gold style box. The host
+## Fixed width, explicit label layout (avoids hidden Container sizing),
+## dark-navy/gold style box. The host
 ## calls present()/dismiss() and places the view; this script never schedules.
+##
+## Layout: a left-aligned rounded badge (the request's icon text) spans the full
+## height, with the three text lines (header, title, description) to its right.
 
 const Styles = preload("styles.gd")
 
 var _header_label: Label
 var _title_label: Label
 var _description_label: Label
+var _badge_label: Label
 var _panel_style: StyleBoxFlat
+var _badge_style: StyleBoxFlat
+var _badge_rect := Rect2()
 
 
 func _init() -> void:
@@ -18,10 +24,12 @@ func _init() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	_panel_style = Styles.make_panel_style()
+	_badge_style = Styles.make_badge_style()
 	var font := Styles.make_font()
 	_header_label = _make_label(font, Styles.HEADER_FONT_SIZE, Styles.HEADER_COLOR)
 	_title_label = _make_label(font, Styles.TITLE_FONT_SIZE, Styles.TITLE_COLOR)
 	_description_label = _make_label(font, Styles.DESCRIPTION_FONT_SIZE, Styles.DESCRIPTION_COLOR)
+	_badge_label = _make_badge_label(font)
 
 
 func _make_label(font: Font, font_size: int, color: Color) -> Label:
@@ -35,12 +43,34 @@ func _make_label(font: Font, font_size: int, color: Color) -> Label:
 	return label
 
 
+func _make_badge_label(font: Font) -> Label:
+	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.clip_text = true
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", font)
+	label.add_theme_font_size_override("font_size", Styles.BADGE_FONT_SIZE)
+	label.add_theme_color_override("font_color", Styles.BADGE_TEXT_COLOR)
+	add_child(label)
+	return label
+
+
 ## Fill the toast from a NotificationRequest and make it visible. The host owns
 ## placement and expiry; this only renders.
 func present(request) -> void:
 	_header_label.text = str(request.header)
 	_title_label.text = str(request.title)
 	_description_label.text = str(request.description)
+	var icon := str(request.icon)
+	if icon.is_empty():
+		icon = "?"
+	_badge_label.text = icon
+	_badge_label.add_theme_font_size_override(
+		"font_size",
+		Styles.BADGE_FONT_SIZE if icon.length() <= 2 else Styles.BADGE_FONT_SIZE_SMALL,
+	)
 	layout()
 	show()
 
@@ -56,16 +86,27 @@ func layout() -> void:
 		return
 	var available_width := maxf(1.0, get_viewport_rect().size.x - Styles.MARGIN_RIGHT * 2.0)
 	var width := minf(Styles.TOAST_WIDTH, available_width)
-	var text_width := maxf(1.0, width - Styles.INTERNAL_PADDING * 2.0)
+	var text_x := Styles.INTERNAL_PADDING + Styles.BADGE_SIZE + Styles.BADGE_GAP
+	var text_width := maxf(1.0, width - text_x - Styles.INTERNAL_PADDING)
 	var y := Styles.INTERNAL_PADDING
 	for label: Label in [_header_label, _title_label, _description_label]:
 		# Establish width BEFORE requesting the wrapped minimum height.
 		label.size = Vector2(text_width, 0.0)
 		var height := label.get_minimum_size().y
-		label.position = Vector2(Styles.INTERNAL_PADDING, y)
+		label.position = Vector2(text_x, y)
 		label.size = Vector2(text_width, height)
 		y += height + Styles.LABEL_SPACING
-	size = Vector2(width, y - Styles.LABEL_SPACING + Styles.INTERNAL_PADDING)
+	var text_height := y - Styles.LABEL_SPACING
+	var content_height := maxf(text_height, Styles.BADGE_SIZE)
+	size = Vector2(width, content_height + Styles.INTERNAL_PADDING * 2.0)
+
+	# Center the badge vertically against the text block.
+	_badge_rect = Rect2(
+		Vector2(Styles.INTERNAL_PADDING, Styles.INTERNAL_PADDING + (content_height - Styles.BADGE_SIZE) * 0.5),
+		Vector2(Styles.BADGE_SIZE, Styles.BADGE_SIZE),
+	)
+	_badge_label.position = _badge_rect.position
+	_badge_label.size = _badge_rect.size
 	queue_redraw()
 
 
@@ -80,3 +121,4 @@ func place_bottom_right(stack_offset: float) -> void:
 
 func _draw() -> void:
 	_panel_style.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+	_badge_style.draw(get_canvas_item(), _badge_rect)

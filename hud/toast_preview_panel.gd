@@ -2,9 +2,9 @@ extends Control
 ## ToastPreviewPanel - developer-only UI for replaying existing toasts.
 ##
 ## A small "Preview" button opens a panel with a dropdown of every registered
-## achievement/reaction plus Play and Close buttons. Presentation only: it forwards
-## the selected entry to an injected play callable and never touches achievement
-## progress, saves, or game state.
+## reaction plus Play and Close buttons. Presentation only: it forwards the
+## selected entry to an injected play callable and never touches progress, saves,
+## or game state.
 ##
 ## Godot's default control theme is large relative to the toast scale: buttons,
 ## labels and especially the OptionButton popup need explicit font-size and compact
@@ -55,7 +55,7 @@ func _build_ui() -> void:
 	open_button.name = "PreviewButton"
 	open_button.text = "Preview"
 	open_button.focus_mode = Control.FOCUS_NONE
-	open_button.tooltip_text = "Preview an achievement or reaction toast"
+	open_button.tooltip_text = "Preview a reaction toast"
 	open_button.anchor_left = 1.0
 	open_button.anchor_right = 1.0
 	open_button.anchor_top = BUTTON_TOP_RATIO

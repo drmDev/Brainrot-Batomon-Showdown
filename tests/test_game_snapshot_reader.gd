@@ -1,7 +1,7 @@
 extends "test_runner.gd"
-## Unit tests for achievements/game_snapshot_reader.gd.
+## Unit tests for snapshots/game_snapshot_reader.gd.
 
-const GameSnapshotReader = preload("../achievements/game_snapshot_reader.gd")
+const GameSnapshotReader = preload("../snapshots/game_snapshot_reader.gd")
 const TestHelpers = preload("test_helpers.gd")
 
 const RHIZUKA := "monster.name.rhizuka"

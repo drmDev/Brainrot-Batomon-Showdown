@@ -6,7 +6,7 @@ extends RefCounted
 ## Unset during normal play, so nothing is written.
 ##
 ## The snapshot is the same Dictionary the evaluator consumes (produced by
-## achievements/game_snapshot_reader.gd), so the dump doubles as a written contract
+## snapshots/game_snapshot_reader.gd), so the dump doubles as a written contract
 ## for the game data the rules depend on.
 ##
 ## File names: state_<counter>_<ticks_ms>.json, written only when the serialized

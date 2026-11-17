@@ -7,49 +7,16 @@ extends "test_runner.gd"
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 
-func test_ids_are_unique_across_kinds() -> void:
+func test_ids_are_unique() -> void:
 	var seen := {}
 	for entry in Catalog.ENTRIES:
 		var id := str(entry.get("id", ""))
 		assert_false(id.is_empty(), "empty id")
-		assert_false(seen.has(id), "duplicate id across kinds: " + id)
+		assert_false(seen.has(id), "duplicate id: " + id)
 		seen[id] = true
 		assert_false(str(entry.get("title", "")).is_empty(), "missing title for " + id)
 		assert_false(str(entry.get("description", "")).is_empty(), "missing description for " + id)
-		var kind := str(entry.get("kind", ""))
-		assert_true(
-			kind == Catalog.KIND_ACHIEVEMENT or kind == Catalog.KIND_REACTION,
-			"%s: unknown kind %s" % [id, kind]
-		)
-
-
-func test_persist_flags_match_kind() -> void:
-	for entry in Catalog.ENTRIES:
-		var id := str(entry.get("id", ""))
-		var persist = entry.get("persist")
-		assert_true(typeof(persist) == TYPE_BOOL, "%s: persist must be a bool" % id)
-		if str(entry.get("kind", "")) == Catalog.KIND_ACHIEVEMENT:
-			assert_true(bool(persist), "%s: achievements must persist" % id)
-		else:
-			assert_false(bool(persist), "%s: reactions must not persist" % id)
-
-
-func test_every_achievement_has_known_rules() -> void:
-	for entry in Catalog.achievements():
-		var id := str(entry.get("id", ""))
-		var rules = entry.get("rules")
-		assert_true(rules is Array, "missing rules for " + id)
-		if not rules is Array:
-			continue
-		assert_gt(rules.size(), 0, "no rules for " + id)
-		for rule in rules:
-			var name := str(rule.get("name", ""))
-			assert_true(Catalog.RULES.has(name), "%s: unknown rule %s" % [id, name])
-			var scope := str(rule.get("scope", ""))
-			assert_true(
-				scope == Catalog.SCOPE_RUN or scope == Catalog.SCOPE_BATTLE,
-				"%s: rule %s has unknown scope %s" % [id, name, scope]
-			)
+		assert_eq(str(entry.get("kind", "")), Catalog.KIND_REACTION, "%s: must be a reaction" % id)
 
 
 func test_every_reaction_has_scopes() -> void:
@@ -113,3 +80,24 @@ func test_registered_rows_cover_every_scope() -> void:
 		var id := str(entry.get("id", ""))
 		for scope in entry.get("scopes", []):
 			assert_true(seen.has("%s|%s" % [id, str(scope)]), "%s missing %s" % [id, str(scope)])
+
+
+func test_every_entry_has_short_icon_text() -> void:
+	for entry in Catalog.ENTRIES:
+		var id := str(entry.get("id", ""))
+		var icon := Catalog.icon_for(id)
+		assert_false(icon.is_empty(), "empty icon for " + id)
+		assert_true(icon.length() <= 4, "icon too long for " + id + ": " + icon)
+
+
+func test_explicit_icon_wins_over_derived() -> void:
+	assert_eq(Catalog.icon_for(Catalog.SIX_SEVEN), "67")
+	assert_eq(Catalog.icon_for(Catalog.FOUR_TWENTY), "420")
+	assert_eq(Catalog.icon_for(Catalog.OVER_9000), "9000")
+	assert_eq(Catalog.icon_for(Catalog.SEVEN_OR_MORE_LIVES), "7+")
+
+
+func test_icon_derivation_from_unknown_ids() -> void:
+	assert_eq(Catalog.icon_for("six_seven_extra"), "67")
+	assert_eq(Catalog.icon_for("not_real_id"), "NRI")
+	assert_eq(Catalog.icon_for(""), "?")

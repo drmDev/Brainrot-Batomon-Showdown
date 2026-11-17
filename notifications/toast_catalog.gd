@@ -1,36 +1,21 @@
 extends RefCounted
-## ToastCatalog - registered achievement and reaction toasts for developer tooling.
+## ToastCatalog - registered reaction toasts for developer tooling.
 ##
 ## Builds display entries from catalog/brain_rot_catalog.gd, so the dev toast
 ## preview always matches what gameplay can actually show. Pure data: no nodes, no
-## game state, no achievement store. Previewing an entry never changes progress or
-## save data; it only builds a NotificationRequest with duplicate display allowed.
+## game state. Previewing an entry never changes progress or save data; it only
+## builds a NotificationRequest with duplicate display allowed.
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
 
-const KIND_ACHIEVEMENT := NotificationRequest.KIND_ACHIEVEMENT
 const KIND_REACTION := NotificationRequest.KIND_REACTION
 
 
-## Every registered achievement and reaction as
-## {kind, id, label, title, description}. Achievements come first, in catalog
-## order; reactions follow in catalog order.
+## Every registered reaction as {kind, id, label, title, description}, in catalog
+## order.
 static func entries() -> Array:
 	var out: Array = []
-
-	for definition in Catalog.achievements():
-		var id := str(definition.get("id", ""))
-		if id.is_empty():
-			continue
-		var title := str(definition.get("title", id))
-		out.append({
-			"kind": KIND_ACHIEVEMENT,
-			"id": id,
-			"label": "Achievement - %s" % title,
-			"title": title,
-			"description": str(definition.get("description", "")),
-		})
 
 	for definition in Catalog.reactions():
 		var id := str(definition.get("id", ""))
@@ -51,8 +36,8 @@ static func entries() -> Array:
 ## Build the NotificationRequest used to preview an entry.
 ##
 ## allow_duplicate is true so repeated previews are shown even while the same
-## toast is visible or queued. Nothing else is touched: no achievement store, no
-## save data, and no game state.
+## toast is visible or queued. Nothing else is touched: no save data and no game
+## state.
 static func make_request(entry: Dictionary) -> NotificationRequest:
 	return NotificationRequest.new(
 		str(entry.get("kind", "")),

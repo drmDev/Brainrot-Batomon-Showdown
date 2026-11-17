@@ -1,20 +1,12 @@
 extends "test_runner.gd"
 ## Unit tests for notifications/toast_catalog.gd (dev toast preview data).
 ##
-## The catalog must expose every registered achievement and reaction, exactly
-## once, and build duplicate-allowed requests for repeated previews.
+## The catalog must expose every registered reaction exactly once and build
+## duplicate-allowed requests for repeated previews.
 
 const ToastCatalog = preload("../notifications/toast_catalog.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const NotificationRequest = preload("../notifications/notification_request.gd")
-
-
-func _achievement_entries(entries: Array) -> Array:
-	var out: Array = []
-	for entry in entries:
-		if str(entry.get("kind", "")) == NotificationRequest.KIND_ACHIEVEMENT:
-			out.append(entry)
-	return out
 
 
 func _reaction_entries(entries: Array) -> Array:
@@ -23,16 +15,6 @@ func _reaction_entries(entries: Array) -> Array:
 		if str(entry.get("kind", "")) == NotificationRequest.KIND_REACTION:
 			out.append(entry)
 	return out
-
-
-func test_entries_include_every_registered_achievement() -> void:
-	var entries := ToastCatalog.entries()
-	for definition in Catalog.achievements():
-		var id := str(definition.get("id", ""))
-		var found := ToastCatalog.find(entries, NotificationRequest.KIND_ACHIEVEMENT, id)
-		assert_false(found.is_empty(), "missing achievement " + id)
-		assert_eq(str(found.get("title", "")), str(definition.get("title", "")))
-		assert_eq(str(found.get("description", "")), str(definition.get("description", "")))
 
 
 func test_entries_include_every_registered_reaction_once() -> void:
@@ -58,7 +40,7 @@ func test_seven_or_more_lives_preview_uses_committed_totals() -> void:
 		Catalog.SEVEN_OR_MORE_LIVES,
 	)
 	assert_false(found.is_empty(), "7_or_more_lives must be in the catalog")
-	assert_eq(str(found.get("title", "")), "You look great today!")
+	assert_eq(str(found.get("title", "")), "YOU LOOK GREAT TODAY!")
 	assert_eq(
 		str(found.get("description", "")),
 		Catalog.describe_entry(Catalog.entry(Catalog.SEVEN_OR_MORE_LIVES)),
@@ -69,17 +51,6 @@ func test_every_entry_has_a_non_empty_label_and_title() -> void:
 	for entry in ToastCatalog.entries():
 		assert_false(str(entry.get("label", "")).is_empty(), "empty label for " + str(entry.get("id", "")))
 		assert_false(str(entry.get("title", "")).is_empty(), "empty title for " + str(entry.get("id", "")))
-
-
-func test_achievement_entries_precede_reaction_entries() -> void:
-	var entries := ToastCatalog.entries()
-	assert_gt(_achievement_entries(entries).size(), 0)
-	assert_gt(_reaction_entries(entries).size(), 0)
-	assert_eq(
-		str(entries[0].get("kind", "")),
-		NotificationRequest.KIND_ACHIEVEMENT,
-		"achievements should be listed first"
-	)
 
 
 func test_make_request_allows_repeated_previews() -> void:
@@ -106,12 +77,22 @@ func test_make_request_copies_entry_presentation() -> void:
 			Catalog.FOUR_TWENTY,
 		),
 	)
-	assert_eq(request.header, NotificationRequest.HEADER_REACTION)
+	assert_eq(request.header, NotificationRequest.HEADER_UNLOCKED)
 	assert_eq(request.title, "Blaze It")
 	assert_eq(request.description, "Battle total 420")
+	assert_eq(request.id, Catalog.FOUR_TWENTY)
+	assert_eq(request.icon, "420")
 
 
 func test_find_requires_kind_and_id() -> void:
 	var entries := ToastCatalog.entries()
-	assert_true(ToastCatalog.find(entries, NotificationRequest.KIND_ACHIEVEMENT, "not_real").is_empty())
 	assert_true(ToastCatalog.find(entries, "other_kind", "oh_yeah").is_empty())
+	assert_true(ToastCatalog.find(entries, NotificationRequest.KIND_REACTION, "not_real").is_empty())
+
+
+func test_reaction_uses_unlocked_header() -> void:
+	assert_eq(
+		NotificationRequest.header_for(NotificationRequest.KIND_REACTION),
+		NotificationRequest.HEADER_UNLOCKED,
+	)
+	assert_eq(NotificationRequest.header_for("other_kind"), "")

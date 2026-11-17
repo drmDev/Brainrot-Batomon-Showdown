@@ -2,9 +2,9 @@ extends RefCounted
 ## ReactionEvaluator - detects "reactions" from game snapshots.
 ##
 ## Rules only: consumes the plain snapshots produced by
-## achievements/game_snapshot_reader.gd and returns newly triggered reaction
-## dictionaries. It never touches live game objects, files, UI, or the achievement
-## store, so a completed achievement can never suppress a reaction.
+## snapshots/game_snapshot_reader.gd and returns newly triggered reaction
+## dictionaries. It never touches live game objects, files, UI, or any persisted
+## state, so a reaction fires purely from the current snapshot.
 ##
 ##   poll(run_snapshot)            -> run-scoped reactions
 ##   poll_battle(battle_snapshot)  -> battle-scoped reactions
@@ -28,7 +28,8 @@ extends RefCounted
 ##   mid-fight. Each battle reaction fires at most ONCE per battle, even when several
 ##   units qualify: the lowest slot wins, and within that slot the first metric in
 ##   BATTLE_METRIC_ORDER. Different battle reactions are tracked independently, so
-##   several of them can fire in the same battle.
+##   several of them can fire in the same battle. A battle rule may also restrict
+##   matches to a species via its `species` key (Big Dog is Cinnabark-only).
 ## - Outcome-scoped: evaluated only at battle_over from the battle snapshot's
 ##   `outcome` (the committed promoted-run totals). Occurrence is run-scoped, so
 ##   reset_battle() does not re-arm it.
@@ -103,7 +104,7 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 			var rule := Catalog.battle_rule(id)
 			if rule.is_empty():
 				continue
-			var found := _find_battle_match(units, rule)
+			var found := _find_battle_match(units, team, rule)
 			if found.is_empty():
 				continue
 			_battle_fired[id] = true
@@ -168,13 +169,15 @@ func _format_detail(definition: Dictionary, detail: String) -> String:
 
 ## Lowest player-side slot with a metric satisfying `rule`, plus the first
 ## matching metric label in BATTLE_METRIC_ORDER and the actual total. Returns {}
-## when nothing matches.
-func _find_battle_match(units: Array, rule: Dictionary) -> Dictionary:
+## when nothing matches. When `rule` carries a `species` key, only units whose
+## team slot resolves to that species name_key can match.
+func _find_battle_match(units: Array, team: Array, rule: Dictionary) -> Dictionary:
 	var expected := int(rule.get("value", 0))
 	var strict := bool(rule.get("strict", false))
 	var metric_labels = rule.get("metrics")
 	if not metric_labels is Array:
 		metric_labels = Catalog.BATTLE_METRIC_ORDER
+	var species_filter := str(rule.get("species", ""))
 
 	var best_slot := -1
 	var best_label := ""
@@ -189,6 +192,16 @@ func _find_battle_match(units: Array, rule: Dictionary) -> Dictionary:
 		if typeof(slot_value) != TYPE_INT:
 			continue
 		var slot := int(slot_value)
+		# Optional species filter: the unit's team slot must resolve to this
+		# species (Big Dog is Cinnabark-only).
+		if not species_filter.is_empty():
+			if slot < 0 or slot >= team.size():
+				continue
+			var team_entry = team[slot]
+			if not team_entry is Dictionary:
+				continue
+			if str(team_entry.get("name_key", "")) != species_filter:
+				continue
 		# A lower slot already matched, so this unit cannot win.
 		if best_slot >= 0 and slot >= best_slot:
 			continue

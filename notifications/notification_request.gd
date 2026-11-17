@@ -1,18 +1,17 @@
 extends RefCounted
 ## NotificationRequest - presentation data for one toast.
 ##
-## Pure data: no scheduling state, no nodes, no repo dependencies. The
+## Pure data: no scheduling state, no nodes, no game state. It may read catalog
+## presentation metadata (title/icon) but never touches progress or saves. The
 ## NotificationManager owns when it is shown; the ToastView owns how it looks.
 ##
 ## Construct with .new(kind, id, title, description[, duration_ms, allow_duplicate]).
-## The event key is kind-prefixed so an achievement and a reaction that happen to
-## share an id string never collide in the dedupe check.
 
-const KIND_ACHIEVEMENT := "achievement"
+const Catalog = preload("../catalog/brain_rot_catalog.gd")
+
 const KIND_REACTION := "reaction"
 
-const HEADER_ACHIEVEMENT := "ACHIEVEMENT UNLOCKED!"
-const HEADER_REACTION := "REACTION!"
+const HEADER_UNLOCKED := "BRAIN ROT UNLOCKED"
 
 const DEFAULT_DURATION_MS := 4000
 
@@ -21,23 +20,27 @@ var event_key := ""
 var header := ""
 var title := ""
 var description := ""
+var id := ""
+var icon := ""
 var duration_ms := DEFAULT_DURATION_MS
 var allow_duplicate := false
 
 
 func _init(
 	kind_value: String = "",
-	id: String = "",
+	id_value: String = "",
 	title_text: String = "",
 	description_text: String = "",
 	duration: int = DEFAULT_DURATION_MS,
 	allow_dup: bool = false
 ) -> void:
 	kind = kind_value
-	event_key = key_for(kind_value, id)
+	event_key = key_for(kind_value, id_value)
 	header = header_for(kind_value)
 	title = title_text
 	description = description_text
+	id = id_value
+	icon = Catalog.icon_for(id_value)
 	duration_ms = duration if duration > 0 else DEFAULT_DURATION_MS
 	allow_duplicate = allow_dup
 
@@ -49,12 +52,11 @@ static func key_for(kind_value: String, id: String) -> String:
 	return "%s:%s" % [kind_value, id]
 
 
-## Small gold header line for a kind. Unknown kinds get an empty header.
+## Small gold header line for a kind. Reactions use "BRAIN ROT UNLOCKED";
+## unknown kinds get an empty header.
 static func header_for(kind_value: String) -> String:
-	if kind_value == KIND_ACHIEVEMENT:
-		return HEADER_ACHIEVEMENT
 	if kind_value == KIND_REACTION:
-		return HEADER_REACTION
+		return HEADER_UNLOCKED
 	return ""
 
 

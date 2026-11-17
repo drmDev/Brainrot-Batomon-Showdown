@@ -1,6 +1,6 @@
 extends RefCounted
 ## BattleCompletionDetector - reports each battle's completion exactly once.
-## Detection only: no UI, no logging, no achievement knowledge.
+## Detection only: no UI, no logging, no game-state knowledge.
 ##
 ## This class owns WHEN battle-scoped evaluation happens. The caller asks
 ## is_pending(state); if true it builds a snapshot, and only once that snapshot is

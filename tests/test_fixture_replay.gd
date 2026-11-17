@@ -1,10 +1,10 @@
 extends "test_runner.gd"
-## Replays JSON fixtures from dev/fixtures/ through the evaluator.
+## Replays JSON fixtures from dev/fixtures/ through the reaction evaluator.
 ##
 ## Two fixture shapes are supported:
 ##   - Curated: {"steps": [ {kind, trainer_id, current_round, team, bench,
 ##       battle_over, battle_units, expect: [...]} ]}. Each step asserts the exact
-##       set of award ids ("expect") so the rules are pinned to documented data.
+##       set of reaction ids ("expect") so the rules are pinned to documented data.
 ##   - Captured: a flat snapshot written by the BRAINROT_DUMP_DIR hook (a single
 ##       {kind, ...} object, no "steps"/"expect"). These assert only that the
 ##       evaluator accepts the real shape without crashing.
@@ -12,7 +12,7 @@ extends "test_runner.gd"
 ## Fixture steps are converted straight into the snapshot Dictionaries the evaluator
 ## consumes, so the fixture format doubles as the snapshot contract.
 
-const AchievementEvaluator = preload("../achievements/achievement_evaluator.gd")
+const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const TestHelpers = preload("test_helpers.gd")
 
 
@@ -87,9 +87,9 @@ func _battle_snapshot(step: Dictionary) -> Dictionary:
 
 func _sorted_ids(earned: Array) -> Array:
 	var out: Array = []
-	for achievement in earned:
-		if achievement is Dictionary:
-			out.append(str(achievement.get("id", "")))
+	for reaction in earned:
+		if reaction is Dictionary:
+			out.append(str(reaction.get("id", "")))
 	out.sort()
 	return out
 
@@ -122,7 +122,7 @@ func _replay_file(path: String) -> void:
 	else:
 		steps = [parsed]
 
-	var evaluator = AchievementEvaluator.new()
+	var evaluator = ReactionEvaluator.new()
 
 	for step in steps:
 		if not step is Dictionary:

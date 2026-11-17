@@ -7,7 +7,6 @@ extends "test_runner.gd"
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
-const AchievementStore = preload("../achievements/achievement_store.gd")
 
 const SIX_SEVEN := Catalog.SIX_SEVEN
 const SIX_NINE := Catalog.SIX_NINE
@@ -16,6 +15,7 @@ const SIX_SIX_SIX := Catalog.SIX_SIX_SIX
 const OVER_9000 := Catalog.OVER_9000
 const SEVEN_OR_MORE_LIVES := Catalog.SEVEN_OR_MORE_LIVES
 const APES_TOGETHER := Catalog.APES_TOGETHER
+const BIG_DOG := Catalog.BIG_DOG
 
 const CINNABARK := "monster.name.cinnabark"
 const RHIZUKA := "monster.name.rhizuka"
@@ -110,26 +110,6 @@ func _display_species(species_key: String) -> String:
 	if species_key.is_empty() or species_key == "?":
 		return "Unknown"
 	return species_key.split(".")[-1].capitalize()
-
-
-func _temp_dir() -> String:
-	var dir := OS.get_temp_dir().path_join("brainrot_reaction_test_%d" % Time.get_ticks_usec())
-	DirAccess.make_dir_recursive_absolute(dir)
-	return dir
-
-
-func _cleanup(dir: String) -> void:
-	var handle := DirAccess.open(dir)
-	if handle == null:
-		return
-	handle.list_dir_begin()
-	var name := handle.get_next()
-	while name != "":
-		if not handle.current_is_dir():
-			handle.remove(name)
-		name = handle.get_next()
-	handle.list_dir_end()
-	DirAccess.remove_absolute(dir)
 
 
 # --- 1. matching snapshot triggers exactly once ---
@@ -739,19 +719,156 @@ func test_over_9000_invalid_values_ignored() -> void:
 	assert_empty(evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"poison_inflicted": true})])))
 
 
-# --- 9. achievement completion state does not suppress reactions ---
+# --- 8d. big_dog: Cinnabark shield strictly over 1,000,000 ---
 
-func test_achievement_completion_does_not_suppress_reaction() -> void:
-	var dir := _temp_dir()
-	var store = AchievementStore.new(dir)
-	store.mark_completed(SIX_SEVEN)
-	store.mark_completed("oh_yeah")
-	assert_true(store.is_completed(SIX_SEVEN))
-
-	# The reaction evaluator takes no store, so completion cannot affect it.
+func test_big_dog_over_threshold_triggers() -> void:
 	var evaluator = _new_evaluator()
-	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
-	_cleanup(dir)
+	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": 1000001.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), BIG_DOG)
+		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 1000001))
+
+
+func test_big_dog_at_threshold_does_not_trigger() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": 1000000.0}),
+	])))
+
+
+func test_big_dog_non_cinnabark_does_not_trigger() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle(
+		[{"name_key": RHIZUKA, "level": 3}],
+		[_unit(0, {"shield_granted": 2000000.0})],
+	)))
+
+
+func test_big_dog_enemy_side_ignored() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": 2000000.0}, 1),
+	])))
+
+
+func test_big_dog_requires_battle_over() -> void:
+	var evaluator = _new_evaluator()
+	assert_empty(evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": 2000000.0}),
+	], false)))
+	assert_eq(evaluator.poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": 2000000.0}),
+	])).size(), 1)
+
+
+func test_big_dog_missing_battle_over_does_not_trigger() -> void:
+	var snapshot := _battle(_team_one(), [_unit(0, {"shield_granted": 2000000.0})])
+	snapshot.erase("battle_over")
+	assert_empty(_new_evaluator().poll_battle(snapshot))
+
+
+func test_big_dog_fires_once_per_battle() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"shield_granted": 2000000.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	assert_empty(evaluator.poll_battle(snapshot))
+
+
+func test_big_dog_reset_battle_rearms() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"shield_granted": 2000000.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_battle()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_big_dog_reset_run_rearms() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _battle(_team_one(), [_unit(0, {"shield_granted": 2000000.0})])
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
+
+
+func test_big_dog_lowest_cinnabark_slot_wins() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": CINNABARK, "level": 3},
+	]
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(1, {"shield_granted": 2000000.0}),
+		_unit(0, {"shield_granted": 3000000.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 3000000))
+
+
+func test_big_dog_non_cinnabark_lower_slot_does_not_block_cinnabark() -> void:
+	var evaluator = _new_evaluator()
+	var team := [
+		{"name_key": RHIZUKA, "level": 3},
+		{"name_key": CINNABARK, "level": 3},
+	]
+	var earned: Array = evaluator.poll_battle(_battle(team, [
+		_unit(0, {"shield_granted": 5000000.0}),
+		_unit(1, {"shield_granted": 2000000.0}),
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 2000000))
+
+
+func test_big_dog_missing_team_or_out_of_range_slot_ignored() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle([], [
+		_unit(0, {"shield_granted": 2000000.0}),
+	])))
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(5, {"shield_granted": 2000000.0}),
+	])))
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(-1, {"shield_granted": 2000000.0}),
+	])))
+
+
+func test_big_dog_null_or_invalid_shield_ignored() -> void:
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": null}),
+	])))
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": "2000000"}),
+	])))
+	assert_empty(_new_evaluator().poll_battle(_battle(_team_one(), [
+		_unit(0, {"shield_granted": true}),
+	])))
+
+
+func test_big_dog_units_not_array_does_not_trigger() -> void:
+	var snapshot := _battle(_team_one(), [])
+	snapshot["battle_units"] = "nope"
+	assert_empty(_new_evaluator().poll_battle(snapshot))
+
+
+func test_big_dog_team_not_array_does_not_trigger() -> void:
+	var snapshot := _battle(_team_one(), [_unit(0, {"shield_granted": 2000000.0})])
+	snapshot["team"] = "nope"
+	assert_empty(_new_evaluator().poll_battle(snapshot))
+
+
+func test_big_dog_coexists_with_other_battle_reactions() -> void:
+	var team := [
+		{"name_key": CINNABARK, "level": 3},
+		{"name_key": RHIZUKA, "level": 3},
+	]
+	var earned: Array = _new_evaluator().poll_battle(_battle(team, [
+		_unit(0, {"damage_dealt": 67, "shield_granted": 2000000.0}),
+		_unit(1, {"healing_done": 420}),
+	]))
+	var ids := _ids(earned)
+	assert_true(ids.has(SIX_SEVEN))
+	assert_true(ids.has(FOUR_TWENTY))
+	assert_true(ids.has(BIG_DOG))
 
 
 # --- 10. 7_or_more_lives: committed post-battle wins/lives ---
@@ -919,5 +1036,79 @@ func test_apes_together_reset_run_rearms() -> void:
 	var evaluator = _new_evaluator()
 	var snapshot := _run_with(TWINS, [_monster(SUNSAGE, 3)])
 	assert_eq(evaluator.poll(snapshot).size(), 1)
+	evaluator.reset_run()
+	assert_eq(evaluator.poll(snapshot).size(), 1)
+
+
+# --- 12. run-scoped reactions: oh_yeah, herd_u_liek_mudkipz, so_i_started_blasting ---
+
+const BEETDOWN := "monster.name.beetdown"
+const DEWLOTL := "monster.name.dewlotl"
+const GENTLEMAN := "gentleman"
+
+
+func _run_day(trainer: String, day: int, team: Array, bench: Array = []) -> Dictionary:
+	return {
+		"kind": "run",
+		"trainer_id": trainer,
+		"current_round": day,
+		"team": team,
+		"bench": bench,
+	}
+
+
+func test_oh_yeah_triggers_for_twins_with_level3_beetdown() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.OH_YEAH)
+		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Beetdown level 3")
+
+
+func test_oh_yeah_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 2)])))
+
+
+func test_oh_yeah_does_not_trigger_for_other_trainers() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(BEETDOWN, 3)])))
+
+
+func test_herd_u_liek_mudkipz_triggers_for_twins_with_level3_dewlotl() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.HERD_U_LIEK_MUDKIPZ)
+		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Dewlotl level 3")
+
+
+func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
+
+
+func test_so_i_started_blasting_triggers_for_gentleman_by_day5() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(GENTLEMAN, 5, [_monster(RHIZUKA, 2)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.SO_I_STARTED_BLASTING)
+		assert_eq(str(earned[0].get("detail", "")), "Trainer gentleman, Rhizuka level 2")
+
+
+func test_so_i_started_blasting_does_not_trigger_after_day5() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(GENTLEMAN, 6, [_monster(RHIZUKA, 2)])))
+
+
+func test_so_i_started_blasting_does_not_trigger_below_level2() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(GENTLEMAN, 3, [_monster(RHIZUKA, 1)])))
+
+
+func test_so_i_started_blasting_does_not_trigger_for_other_trainers() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(RHIZUKA, 2)])))
+
+
+func test_converted_reactions_fire_once_per_run() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _run_day(TWINS, 3, [_monster(BEETDOWN, 3)])
+	assert_eq(evaluator.poll(snapshot).size(), 1)
+	assert_empty(evaluator.poll(snapshot))
 	evaluator.reset_run()
 	assert_eq(evaluator.poll(snapshot).size(), 1)

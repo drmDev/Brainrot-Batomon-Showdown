@@ -1,7 +1,7 @@
 extends RefCounted
-## TestHelpers - fakes and builders for the Brain Rot achievement tests.
+## TestHelpers - fakes and builders for the Brain Rot tests.
 ##
-## FakeObject exists because achievement_evaluator.gd guards with is_instance_valid(),
+## FakeObject exists because the snapshot reader guards with is_instance_valid(),
 ## which returns false for Dictionaries. Fakes must be Object instances (RefCounted).
 
 
@@ -29,7 +29,7 @@ static func probe(obj, property: String) -> bool:
 	return property in obj
 
 
-## Build a monster fake for the achievement evaluator: needs `data.name_key` and `level`.
+## Build a monster fake for the snapshot reader: needs `data.name_key` and `level`.
 static func monster(name_key: String, level: int = 1):
 	return FakeObject.new({
 		"data": FakeObject.new({"name_key": name_key}),
@@ -37,7 +37,7 @@ static func monster(name_key: String, level: int = 1):
 	})
 
 
-## Build a run fake for the achievement evaluator.
+## Build a run fake for the snapshot reader.
 static func run(trainer_id: String, day: int, team: Array = [], bench: Array = []):
 	return FakeObject.new({
 		"trainer_id": trainer_id,

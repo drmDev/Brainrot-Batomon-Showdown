@@ -1,15 +1,14 @@
 extends Node
-## Brain Rot - achievement detection, persistence, and toast.
+## Brain Rot - reaction detection and toast.
 ##
 ## Polls the live run and battle state every 500 ms, reads them into snapshots via
-## achievements/game_snapshot_reader.gd, evaluates achievements via
-## achievements/achievement_evaluator.gd, persists completion through
-## achievements/achievement_store.gd, and shows toasts through the shared
-## notifications/notification_host.gd (achievements and reactions share one queue).
+## snapshots/game_snapshot_reader.gd, evaluates reactions via
+## reactions/reaction_evaluator.gd, and shows toasts through the shared
+## notifications/notification_host.gd.
 ##
 ## Responsibilities kept here: initialization, polling, and coordination.
-## Snapshot reading, rules, persistence, UI, battle-completion detection, and debug
-## capture live in their own files.
+## Snapshot reading, rules, UI, battle-completion detection, and debug capture live
+## in their own files.
 ##
 ## Logging mirrors Creature Comforts: one append handle kept open for the session,
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
@@ -32,13 +31,10 @@ const POLL_INTERVAL_MS := 500
 
 # Toasts are always on; there is no settings gate.
 
-# Achievement system: snapshot reading + poll-based detection + JSON persistence + toast host
+# Snapshot reading + battle-completion detection + shared toast host.
 var _battle_completion = null
-var _achievement_evaluator = null
-var _achievement_store = null
 var _notification_host = null
-var _notification_request_script = null
-var _achievement_layer: CanvasLayer = null
+var _toast_layer: CanvasLayer = null
 var _snapshot_reader = null
 var _state_capture = null
 
@@ -84,7 +80,7 @@ func _initialize_mod() -> void:
 		return
 	_initialization_started = true
 
-	_setup_achievement_system()
+	_setup_core()
 	_setup_reactions()
 
 	# The systems are live and must run even if the log file cannot be opened;
@@ -94,39 +90,31 @@ func _initialize_mod() -> void:
 	_setup_dev_tools()
 
 
-func _setup_achievement_system() -> void:
-	"""Initialize detection, persistence, and the shared notification host."""
+func _setup_core() -> void:
+	"""Initialize snapshot reading, battle-completion detection, and the toast host."""
 	var base_dir := MOD_BASE_DIR
 
-	var GameSnapshotReader = load(base_dir.path_join("achievements/game_snapshot_reader.gd"))
+	var GameSnapshotReader = load(base_dir.path_join("snapshots/game_snapshot_reader.gd"))
 	_snapshot_reader = GameSnapshotReader.new(_has_property)
 
-	var BattleCompletionDetector = load(base_dir.path_join("achievements/battle_completion_detector.gd"))
+	var BattleCompletionDetector = load(base_dir.path_join("battle/battle_completion_detector.gd"))
 	_battle_completion = BattleCompletionDetector.new()
-
-	var AchievementEvaluator = load(base_dir.path_join("achievements/achievement_evaluator.gd"))
-	_achievement_evaluator = AchievementEvaluator.new()
-
-	# Store the JSON at the mod root (next to mod_main.gd).
-	var AchievementStore = load(base_dir.path_join("achievements/achievement_store.gd"))
-	_achievement_store = AchievementStore.new(base_dir)
 
 	var StateCapture = load(base_dir.path_join("debug/state_capture.gd"))
 	_state_capture = StateCapture.new()
 
 	# Dedicated layer so toasts can appear over the battle results screen.
-	_achievement_layer = CanvasLayer.new()
-	_achievement_layer.layer = 100
-	_achievement_layer.name = "BrainRot_Layer"
-	add_child(_achievement_layer)
+	_toast_layer = CanvasLayer.new()
+	_toast_layer.layer = 100
+	_toast_layer.name = "BrainRot_Layer"
+	add_child(_toast_layer)
 
-	# Shared toast queue: achievements and reactions both submit here.
+	# Shared toast queue for reactions.
 	var NotificationManager = load(base_dir.path_join("notifications/notification_manager.gd"))
 	var NotificationHost = load(base_dir.path_join("notifications/notification_host.gd"))
-	_notification_request_script = load(base_dir.path_join("notifications/notification_request.gd"))
-	_notification_host = NotificationHost.new(NotificationManager.new(), _achievement_layer)
+	_notification_host = NotificationHost.new(NotificationManager.new(), _toast_layer)
 	_notification_host.name = "NotificationHost"
-	_achievement_layer.add_child(_notification_host)
+	_toast_layer.add_child(_notification_host)
 
 
 func _setup_reactions() -> void:
@@ -161,13 +149,13 @@ func _setup_dev_tools() -> void:
 
 	var ToastCatalog = load(MOD_BASE_DIR.path_join("notifications/toast_catalog.gd"))
 	var ToastPreviewPanel = load(MOD_BASE_DIR.path_join("hud/toast_preview_panel.gd"))
-	if ToastCatalog == null or ToastPreviewPanel == null or _achievement_layer == null:
+	if ToastCatalog == null or ToastPreviewPanel == null or _toast_layer == null:
 		return
 
 	_toast_catalog_script = ToastCatalog
 	_toast_preview_panel = ToastPreviewPanel.new(ToastCatalog.entries(), _preview_toast)
 	_toast_preview_panel.name = "ToastPreviewPanel"
-	_achievement_layer.add_child(_toast_preview_panel)
+	_toast_layer.add_child(_toast_preview_panel)
 	_print_notice("Brain Rot: dev toast preview enabled")
 
 
@@ -241,9 +229,6 @@ func _inspect_current_phase() -> void:
 	var run_snapshot: Dictionary = _snapshot_reader.read_run(run) if _snapshot_reader != null else {}
 	_check_run_transition(run, run_snapshot)
 
-	# Run-scoped achievements are evaluated every poll (the Twins transformation
-	# happens in the shop, but polling all phases keeps the team baseline current).
-	_poll_achievements(run_snapshot)
 	# Run-scoped reactions are evaluated only in the shop (the start of a day).
 	# The game promotes the completed run into RunManager.data before the visual
 	# battle ends, so lives/wins/income there already reflect the post-battle
@@ -260,10 +245,9 @@ func _inspect_current_phase() -> void:
 				_reaction_evaluator.reset_battle()
 			_log_battle_probe(state)
 
-		# Battle-scoped achievements and reactions are evaluated once the battle is
-		# over, against the final unit totals. The detector owns that timing; the
-		# completion is consumed only after a usable snapshot exists, so a partial
-		# read is retried next poll.
+		# Battle-scoped reactions are evaluated once the battle is over, against the
+		# final unit totals. The detector owns that timing; the completion is consumed
+		# only after a usable snapshot exists, so a partial read is retried next poll.
 		if _battle_completion != null and _battle_completion.is_pending(state):
 			# During battle the player's run is the replay copy the game hands the
 			# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
@@ -288,7 +272,6 @@ func _inspect_current_phase() -> void:
 			if usable:
 				_battle_completion.consume()
 				_log_battle_units(battle_snapshot)
-				_poll_battle_achievements(battle_snapshot)
 				_poll_battle_reactions(battle_snapshot)
 	elif _was_battle:
 		# Reset battle-scoped tracking only when actually leaving the battle phase.
@@ -297,20 +280,6 @@ func _inspect_current_phase() -> void:
 
 	_was_battle = is_battle
 	_maybe_capture(battle_snapshot if is_battle else run_snapshot)
-
-
-## Poll the run snapshot for newly earned achievements, persist them, and show a toast.
-func _poll_achievements(run_snapshot: Dictionary) -> void:
-	if _achievement_evaluator == null:
-		return
-	_award_achievements(_achievement_evaluator.poll(run_snapshot))
-
-
-## Poll a completed battle snapshot for battle-scoped achievements (Big Dog, Best Dog).
-func _poll_battle_achievements(battle_snapshot: Dictionary) -> void:
-	if _achievement_evaluator == null:
-		return
-	_award_achievements(_achievement_evaluator.poll_battle(battle_snapshot))
 
 
 ## Poll the run snapshot for newly triggered reactions and play them.
@@ -377,38 +346,6 @@ func _log_battle_probe(state) -> void:
 	])
 
 
-## Persist newly earned achievements (deduplicated by the store). The panel is
-## optional: unlocks are saved even when it is absent or notifications are disabled.
-func _award_achievements(earned: Array) -> void:
-	if _achievement_store == null:
-		return
-	for achievement in earned:
-		var id := str(achievement.get("id", ""))
-		if id.is_empty() or _achievement_store.is_completed(id):
-			continue
-		var title := str(achievement.get("title", ""))
-		var description := str(achievement.get("description", ""))
-		if title.is_empty() or description.is_empty():
-			continue
-
-		if not _achievement_store.mark_completed(id):
-			continue
-		_print_notice("Brain Rot: EARNED | %s | %s" % [id, title])
-		_submit_achievement_notification(id, title, description)
-
-
-## Submit an achievement toast through the shared notification host.
-func _submit_achievement_notification(id: String, title: String, description: String) -> void:
-	if _notification_request_script == null:
-		return
-	_submit_notification(_notification_request_script.new(
-		_notification_request_script.KIND_ACHIEVEMENT,
-		id,
-		title,
-		description,
-	))
-
-
 ## Forward a NotificationRequest to the shared host (no-op when unavailable).
 func _submit_notification(request) -> void:
 	if _notification_host != null:
@@ -470,8 +407,6 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 
 	_print_notice("Brain Rot: run reset (%s)" % reason)
 	_run_tracking = tracking
-	if _achievement_evaluator != null:
-		_achievement_evaluator.reset_run()
 	if _reaction_evaluator != null:
 		_reaction_evaluator.reset_run()
 	if _battle_completion != null:

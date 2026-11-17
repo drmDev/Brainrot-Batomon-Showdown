@@ -11,9 +11,9 @@ const Catalog = preload("../catalog/brain_rot_catalog.gd")
 func _entries() -> Array:
 	return [
 		{
-			"kind": "achievement",
+			"kind": "reaction",
 			"id": "oh_yeah",
-			"label": "Achievement - Oh Yeah!",
+			"label": "Reaction - Oh Yeah!",
 			"title": "Oh Yeah!",
 			"description": "Made double kool aid man level 3s at once !",
 		},

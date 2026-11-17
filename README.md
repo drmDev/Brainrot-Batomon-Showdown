@@ -1,18 +1,17 @@
 # Brain Rot
 
-Fun additions for **Batomon Showdown**. Currently ships achievement detection,
-persistence, and unlock toasts; more brainrot features are planned.
+Fun additions for **Batomon Showdown**. Currently ships reaction detection and
+unlock toasts; more brainrot features are planned.
 
 ## Features
 
-### Achievements
-- Tracks run and battle state every 500 ms and awards achievements as you play.
-- Completion is persisted to `achievements.json` at the mod root.
-- Unlocks are printed to the log and shown as a bottom-right toast.
+### Reactions
+- Tracks run and battle state every 500 ms and fires reactions as you play.
+- Reactions are not persisted; they fire each time their condition occurs.
+- Reactions are printed to the log and shown as a bottom-right toast.
 
 ### Planned
-- Additional "fun" features beyond achievements. The achievement system will
-  remain part of the mod.
+- Additional "fun" features beyond reactions.
 
 ## Settings
 

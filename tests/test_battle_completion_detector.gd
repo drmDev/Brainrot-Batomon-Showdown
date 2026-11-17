@@ -1,7 +1,7 @@
 extends "test_runner.gd"
-## Unit tests for achievements/battle_completion_detector.gd.
+## Unit tests for battle/battle_completion_detector.gd.
 
-const BattleCompletionDetector = preload("../achievements/battle_completion_detector.gd")
+const BattleCompletionDetector = preload("../battle/battle_completion_detector.gd")
 const TestHelpers = preload("test_helpers.gd")
 
 

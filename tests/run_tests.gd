@@ -6,10 +6,7 @@ extends SceneTree
 ## Exits 0 when all tests pass, 1 otherwise.
 
 var _test_scripts := {
-	"achievement_evaluator": preload("test_achievement_evaluator.gd"),
-	"achievement_store": preload("test_achievement_store.gd"),
 	"battle_completion_detector": preload("test_battle_completion_detector.gd"),
-	"achievements_schema": preload("test_achievements_schema.gd"),
 	"dev_config": preload("test_dev_config.gd"),
 	"mod_main_preview": preload("test_mod_main_preview.gd"),
 	"mod_main_reactions": preload("test_mod_main_reactions.gd"),
