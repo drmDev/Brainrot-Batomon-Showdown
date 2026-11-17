@@ -121,3 +121,24 @@ func test_icon_derivation_from_unknown_ids() -> void:
 	assert_eq(Catalog.icon_for("six_seven_extra"), "67")
 	assert_eq(Catalog.icon_for("not_real_id"), "NRI")
 	assert_eq(Catalog.icon_for(""), "?")
+
+
+func test_numeric_reaction_descriptions_mention_unit_contribution() -> void:
+	var cases := [
+		{"id": Catalog.SIX_SEVEN, "value": "67", "metrics": "damage/heal/shield/burn/poison/shock"},
+		{"id": Catalog.SIX_NINE, "value": "69", "metrics": "damage/heal/shield/burn/poison/shock"},
+		{"id": Catalog.FOUR_TWENTY, "value": "420", "metrics": "damage/heal/shield/burn/poison/shock"},
+		{"id": Catalog.SIX_SIX_SIX, "value": "666", "metrics": "damage/heal/shield/burn/poison/shock"},
+		{"id": Catalog.OVER_9000, "value": "over 9000", "metrics": "heal/burn/poison/shock"},
+	]
+	for case in cases:
+		var id := str(case["id"])
+		var description := str(Catalog.entry(id).get("description", ""))
+		assert_true(description.contains("unit contributes"), "%s: missing unit contribution" % id)
+		assert_true(description.contains(str(case["value"])), "%s: missing value" % id)
+		assert_true(description.contains(str(case["metrics"])), "%s: missing metrics" % id)
+
+
+func test_big_dog_description_mentions_cinnabark_contribution() -> void:
+	var description := str(Catalog.entry(Catalog.BIG_DOG).get("description", ""))
+	assert_true(description.contains("Cinnabark contributes"), description)
