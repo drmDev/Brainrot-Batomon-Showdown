@@ -1,9 +1,8 @@
 extends "test_runner.gd"
 ## Unit tests for reactions/reaction_evaluator.gd.
 ##
-## Battle reactions are data-driven: BATTLE_CASES mirrors the evaluator's
-## BATTLE_REACTIONS table, so every battle test runs the same matrix for each value
-## (67, 69, 420, 666). Adding a value reaction means one row here, not a new test block.
+## The evaluator returns match dictionaries ({id, case, params, species_key});
+## user-facing text is tested separately in test_reaction_text.gd.
 
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
@@ -99,29 +98,20 @@ func _ids(reactions: Array) -> Array:
 	return ids
 
 
-## The single expected detail line for a match.
-func _detail(species: String, label: String, value: int) -> String:
-	return "%s contributed %s %s in battle!" % [
-		_display_species(species),
-		_abbreviate(value),
-		label,
-	]
+## Assert a run match's case.
+func _assert_run_case(reaction, case_name: String, message: String = "") -> void:
+	assert_eq(str(reaction.get("case", "")), case_name, message)
 
 
-## Test-side mirror of the evaluator's number abbreviation.
-func _abbreviate(value: int) -> String:
-	if value >= 1000000:
-		return "%.1fM" % (float(value) / 1000000.0)
-	if value >= 1000:
-		return "%.1fK" % (float(value) / 1000.0)
-	return str(value)
-
-
-## Test-side mirror of the evaluator's species display formatting.
-func _display_species(species_key: String) -> String:
-	if species_key.is_empty() or species_key == "?":
-		return "Unknown"
-	return species_key.split(".")[-1].capitalize()
+## Assert a battle match's case and params.
+func _assert_battle_match(reaction, species_key: String, label: String, value: int, message: String = "") -> void:
+	assert_eq(str(reaction.get("case", "")), "battle", message)
+	var params = reaction.get("params")
+	assert_true(params is Dictionary, message)
+	if params is Dictionary:
+		assert_eq(str(params.get("species_key", "")), species_key, message)
+		assert_eq(str(params.get("metric", "")), label, message)
+		assert_eq(int(params.get("value", 0)), value, message)
 
 
 # --- 1. matching snapshot triggers exactly once ---
@@ -132,7 +122,7 @@ func test_lives6_wins7_triggers_once() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 7")
+		_assert_run_case(earned[0], "lives_wins")
 	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 1)
 
 
@@ -144,7 +134,7 @@ func test_lives6_day7_triggers_six_seven() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 7")
+		_assert_run_case(earned[0], "lives_day")
 
 
 func test_lives6_wins7_triggers_six_seven_with_layout() -> void:
@@ -153,7 +143,7 @@ func test_lives6_wins7_triggers_six_seven_with_layout() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 7")
+		_assert_run_case(earned[0], "lives_wins")
 
 
 func test_lives6_day9_triggers_six_nine() -> void:
@@ -162,7 +152,7 @@ func test_lives6_day9_triggers_six_nine() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_NINE)
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 9")
+		_assert_run_case(earned[0], "lives_day")
 
 
 func test_lives6_wins9_triggers_six_nine() -> void:
@@ -171,7 +161,7 @@ func test_lives6_wins9_triggers_six_nine() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_NINE)
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Wins 9")
+		_assert_run_case(earned[0], "lives_wins")
 
 
 func test_lives5_day9_does_not_trigger_six_nine() -> void:
@@ -189,7 +179,7 @@ func test_income_values_trigger_each_numeric_reaction() -> void:
 		assert_eq(earned.size(), 1, label)
 		if earned.size() == 1:
 			assert_eq(str(earned[0].get("id", "")), label, label)
-			assert_eq(str(earned[0].get("detail", "")), "Income %d" % income, label)
+			_assert_run_case(earned[0], "income", label)
 
 
 func test_income_near_misses_do_not_trigger() -> void:
@@ -210,10 +200,10 @@ func test_over_9000_income_is_strictly_greater_than_9000() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), OVER_9000)
-		assert_eq(str(earned[0].get("detail", "")), "Income 9001")
+		_assert_run_case(earned[0], "income")
 
 
-func test_layout_and_income_combine_detail() -> void:
+func test_layout_and_income_priority_picks_lives_day_wins() -> void:
 	var evaluator = _new_evaluator()
 	var earned: Array = evaluator.poll({
 		"kind": "run",
@@ -224,7 +214,7 @@ func test_layout_and_income_combine_detail() -> void:
 	})
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), "Lives 6, Day 7, Wins 7, Income 67")
+		_assert_run_case(earned[0], "lives_day_wins")
 
 
 # --- 2. near misses do not trigger ---
@@ -327,9 +317,6 @@ func test_reset_run_permits_another_trigger() -> void:
 
 
 # --- 8. battle-scoped: any player unit metric exactly <value> ---
-#
-# Every test below loops over BATTLE_CASES, so each battle reaction gets the same
-# coverage. The `label` argument on assertions names the case that failed.
 
 func test_battle_each_metric_triggers_for_every_reaction() -> void:
 	for case in BATTLE_CASES:
@@ -343,16 +330,10 @@ func test_battle_each_metric_triggers_for_every_reaction() -> void:
 			assert_eq(earned.size(), 1, label)
 			if earned.size() == 1:
 				assert_eq(str(earned[0].get("id", "")), str(case["id"]), label)
-				assert_eq(
-					str(earned[0].get("detail", "")),
-					_detail(CINNABARK, str(metric["label"]), value),
-					label
-				)
+				_assert_battle_match(earned[0], CINNABARK, str(metric["label"]), value, label)
 
 
 func test_battle_float_metrics_trigger() -> void:
-	# The reader emits floats for battle counters (e.g. heal=420.0); they must
-	# still match an integer threshold.
 	for case in BATTLE_CASES:
 		var value := int(case["value"])
 		var evaluator = _new_evaluator()
@@ -362,11 +343,7 @@ func test_battle_float_metrics_trigger() -> void:
 		assert_eq(earned.size(), 1, str(case["id"]))
 		if earned.size() == 1:
 			assert_eq(str(earned[0].get("id", "")), str(case["id"]))
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail(CINNABARK, "heal", value),
-				str(case["id"])
-			)
+			_assert_battle_match(earned[0], CINNABARK, "heal", value, str(case["id"]))
 
 
 func test_battle_near_misses_do_not_trigger() -> void:
@@ -406,18 +383,13 @@ func test_battle_lowest_slot_wins() -> void:
 	for case in BATTLE_CASES:
 		var value := int(case["value"])
 		var evaluator = _new_evaluator()
-		# Slot 2 is listed first but slot 1 is lower, so slot 1 wins.
 		var earned: Array = evaluator.poll_battle(_battle(_team_two(), [
 			_unit(2, {"damage_dealt": value}),
 			_unit(1, {"healing_done": value}),
 		]))
 		assert_eq(earned.size(), 1, str(case["id"]))
 		if earned.size() == 1:
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail(RHIZUKA, "heal", value),
-				str(case["id"])
-			)
+			_assert_battle_match(earned[0], RHIZUKA, "heal", value, str(case["id"]))
 
 
 func test_battle_same_unit_multiple_metrics_fire_once_for_first_metric() -> void:
@@ -429,11 +401,7 @@ func test_battle_same_unit_multiple_metrics_fire_once_for_first_metric() -> void
 		]))
 		assert_eq(earned.size(), 1, str(case["id"]))
 		if earned.size() == 1:
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail(CINNABARK, "damage", value),
-				str(case["id"])
-			)
+			_assert_battle_match(earned[0], CINNABARK, "damage", value, str(case["id"]))
 
 
 func test_battle_fires_once_even_with_many_matches() -> void:
@@ -447,11 +415,7 @@ func test_battle_fires_once_even_with_many_matches() -> void:
 		var earned: Array = evaluator.poll_battle(snapshot)
 		assert_eq(earned.size(), 1, str(case["id"]))
 		if earned.size() == 1:
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail(CINNABARK, "damage", value),
-				str(case["id"])
-			)
+			_assert_battle_match(earned[0], CINNABARK, "damage", value, str(case["id"]))
 		assert_empty(evaluator.poll_battle(snapshot), str(case["id"]))
 
 
@@ -463,7 +427,6 @@ func test_battle_mid_fight_snapshot_does_not_trigger() -> void:
 			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": value})], false)),
 			str(case["id"])
 		)
-		# The same totals at battle_over do trigger.
 		assert_eq(
 			evaluator.poll_battle(_battle(_team_one(), [_unit(0, {"damage_dealt": value})])).size(),
 			1,
@@ -530,11 +493,7 @@ func test_battle_unknown_species_logs_unknown() -> void:
 		var earned: Array = evaluator.poll_battle(_battle([], [_unit(3, {"damage_dealt": value})]))
 		assert_eq(earned.size(), 1, str(case["id"]))
 		if earned.size() == 1:
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail("?", "damage", value),
-				str(case["id"])
-			)
+			_assert_battle_match(earned[0], "", "damage", value, str(case["id"]))
 
 
 # --- 8b. battle reactions are tracked independently ---
@@ -580,8 +539,6 @@ func test_battle_same_unit_multiple_values_fire_all() -> void:
 
 
 func test_battle_reactions_do_not_trigger_on_run_snapshot() -> void:
-	# Battle reactions are battle-only: lives/wins never trigger them. (6/7 still
-	# triggers six_seven's run condition, so assert on ids, not emptiness.)
 	var evaluator = _new_evaluator()
 	for snapshot in [_snap(6, 7), _snap(4, 20), _snap(666, 666), _snap(9002, 9002)]:
 		var ids := _ids(evaluator.poll(snapshot))
@@ -615,11 +572,7 @@ func test_over_9000_each_metric_triggers_with_actual_total() -> void:
 		assert_eq(earned.size(), 1, key)
 		if earned.size() == 1:
 			assert_eq(str(earned[0].get("id", "")), OVER_9000, key)
-			assert_eq(
-				str(earned[0].get("detail", "")),
-				_detail(CINNABARK, str(metric["label"]), 9002),
-				key
-			)
+			_assert_battle_match(earned[0], CINNABARK, str(metric["label"]), 9002, key)
 
 
 func test_over_9000_float_metrics_trigger() -> void:
@@ -630,7 +583,7 @@ func test_over_9000_float_metrics_trigger() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), OVER_9000)
-		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "poison", 9002))
+		_assert_battle_match(earned[0], CINNABARK, "poison", 9002)
 
 
 func test_over_9000_boundary_9000_does_not_trigger() -> void:
@@ -673,18 +626,17 @@ func test_over_9000_lowest_slot_wins() -> void:
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(RHIZUKA, "poison", 9001))
+		_assert_battle_match(earned[0], RHIZUKA, "poison", 9001)
 
 
 func test_over_9000_first_metric_wins_within_a_slot() -> void:
-	# BATTLE_METRICS order is heal, burn, poison, shock; heal is absent here.
 	var evaluator = _new_evaluator()
 	var earned: Array = evaluator.poll_battle(_battle(_team_one(), [
 		_unit(0, {"shock_inflicted": 12000, "burn_inflicted": 9001}),
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "burn", 9001))
+		_assert_battle_match(earned[0], CINNABARK, "burn", 9001)
 
 
 func test_over_9000_mid_fight_snapshot_does_not_trigger() -> void:
@@ -741,7 +693,7 @@ func test_big_dog_over_threshold_triggers() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), BIG_DOG)
-		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 1000001))
+		_assert_battle_match(earned[0], CINNABARK, "shield", 1000001)
 
 
 func test_big_dog_at_threshold_does_not_trigger() -> void:
@@ -814,7 +766,7 @@ func test_big_dog_lowest_cinnabark_slot_wins() -> void:
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 3000000))
+		_assert_battle_match(earned[0], CINNABARK, "shield", 3000000)
 
 
 func test_big_dog_non_cinnabark_lower_slot_does_not_block_cinnabark() -> void:
@@ -829,7 +781,7 @@ func test_big_dog_non_cinnabark_lower_slot_does_not_block_cinnabark() -> void:
 	]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
-		assert_eq(str(earned[0].get("detail", "")), _detail(CINNABARK, "shield", 2000000))
+		_assert_battle_match(earned[0], CINNABARK, "shield", 2000000)
 
 
 func test_big_dog_missing_team_or_out_of_range_slot_ignored() -> void:
@@ -883,7 +835,6 @@ func test_big_dog_coexists_with_other_battle_reactions() -> void:
 	assert_true(ids.has(BIG_DOG))
 
 
-
 # --- 11. apes_together: Twins with a fielded level-3 Sunsage ---
 
 const SUNSAGE := "monster.name.sunsage"
@@ -909,7 +860,7 @@ func test_apes_together_triggers_for_twins_with_a_level3_sunsage() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), APES_TOGETHER)
-		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Sunsage level 3")
+		_assert_run_case(earned[0], "evolved")
 
 
 func test_apes_together_does_not_trigger_for_other_trainers() -> void:
@@ -963,7 +914,7 @@ func test_oh_yeah_triggers_for_twins_with_level3_beetdown() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), Catalog.OH_YEAH)
-		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Beetdown level 3")
+		_assert_run_case(earned[0], "evolved")
 
 
 func test_oh_yeah_does_not_trigger_below_level3() -> void:
@@ -979,11 +930,12 @@ func test_herd_u_liek_mudkipz_triggers_for_twins_with_level3_dewlotl() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), Catalog.HERD_U_LIEK_MUDKIPZ)
-		assert_eq(str(earned[0].get("detail", "")), "Trainer twins, Dewlotl level 3")
+		_assert_run_case(earned[0], "evolved")
 
 
 func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
 	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
+
 
 func test_converted_reactions_fire_once_per_run() -> void:
 	var evaluator = _new_evaluator()
@@ -1026,5 +978,3 @@ func test_non_monster_run_reaction_has_empty_species_key() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("species_key", "")), "")
-
-

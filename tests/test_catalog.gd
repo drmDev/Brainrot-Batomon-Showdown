@@ -1,10 +1,8 @@
 extends "test_runner.gd"
-## Schema tests for catalog/brain_rot_catalog.gd.
-##
-## These check the metadata invariants and that every reaction's check function is
-## reachable. Per-reaction behavior is covered by test_reaction_evaluator.gd.
+## Schema tests for catalog/brain_rot_catalog.gd and its reaction text table.
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
+const ReactionText = preload("../catalog/reaction_text.gd")
 
 
 func test_ids_are_unique() -> void:
@@ -15,7 +13,6 @@ func test_ids_are_unique() -> void:
 		assert_false(seen.has(id), "duplicate id: " + id)
 		seen[id] = true
 		assert_false(str(entry.get("title", "")).is_empty(), "missing title for " + id)
-		assert_false(str(entry.get("description", "")).is_empty(), "missing description for " + id)
 		assert_eq(str(entry.get("kind", "")), Catalog.KIND_REACTION, "%s: must be a reaction" % id)
 
 
@@ -29,7 +26,7 @@ func test_every_reaction_has_scopes() -> void:
 		assert_gt(scopes.size(), 0, "no scopes for " + id)
 		for scope in scopes:
 			assert_true(
-				[Catalog.SCOPE_RUN, Catalog.SCOPE_BATTLE, Catalog.SCOPE_OUTCOME].has(str(scope)),
+				[Catalog.SCOPE_RUN, Catalog.SCOPE_BATTLE].has(str(scope)),
 				"%s: unknown scope %s" % [id, str(scope)]
 			)
 
@@ -50,8 +47,8 @@ func test_run_checks_are_reachable() -> void:
 		var id := str(entry.get("id", ""))
 		if not entry.get("scopes", []).has(Catalog.SCOPE_RUN):
 			continue
-		# An empty snapshot never matches, but the dispatcher must return a String.
-		assert_true(typeof(Catalog.run_detail(id, {})) == TYPE_STRING, id)
+		# An empty snapshot never matches, but the dispatcher must return a Dictionary.
+		assert_true(Catalog.run_match(id, {}) is Dictionary, id)
 
 
 func test_battle_checks_are_reachable() -> void:
@@ -64,12 +61,26 @@ func test_battle_checks_are_reachable() -> void:
 		assert_true(rule.get("metrics") is Array, "missing metrics for " + id)
 
 
-func test_outcome_checks_are_reachable() -> void:
+func test_every_reaction_has_text_templates() -> void:
 	for entry in Catalog.reactions():
 		var id := str(entry.get("id", ""))
-		if not entry.get("scopes", []).has(Catalog.SCOPE_OUTCOME):
-			continue
-		assert_true(typeof(Catalog.outcome_detail(id, {})) == TYPE_STRING, id)
+		assert_gt(ReactionText.cases(id).size(), 0, "missing reaction text for " + id)
+		for case_name in ReactionText.cases(id):
+			var template := ReactionText.template_for(id, case_name)
+			assert_false(template.is_empty(), "empty template for %s/%s" % [id, case_name])
+
+
+func test_every_template_placeholder_is_known() -> void:
+	var regex := RegEx.new()
+	regex.compile("\\{(\\w+)\\}")
+	for id in ReactionText.TEMPLATES:
+		for case_name in ReactionText.TEMPLATES[id]:
+			var template := str(ReactionText.TEMPLATES[id][case_name])
+			for m in regex.search_all(template):
+				assert_true(
+					ReactionText.KNOWN_PLACEHOLDERS.has(str(m.get_string(1))),
+					"unknown placeholder in %s/%s: %s" % [id, case_name, m.get_string(0)]
+				)
 
 
 func test_registered_rows_cover_every_scope() -> void:
@@ -120,24 +131,3 @@ func test_icon_derivation_from_unknown_ids() -> void:
 	assert_eq(Catalog.icon_for("six_seven_extra"), "67")
 	assert_eq(Catalog.icon_for("not_real_id"), "NRI")
 	assert_eq(Catalog.icon_for(""), "?")
-
-
-func test_numeric_reaction_descriptions_mention_unit_contribution() -> void:
-	var cases := [
-		{"id": Catalog.SIX_SEVEN, "value": "67", "metrics": "damage/heal/shield/burn/poison/shock"},
-		{"id": Catalog.SIX_NINE, "value": "69", "metrics": "damage/heal/shield/burn/poison/shock"},
-		{"id": Catalog.FOUR_TWENTY, "value": "420", "metrics": "damage/heal/shield/burn/poison/shock"},
-		{"id": Catalog.SIX_SIX_SIX, "value": "666", "metrics": "damage/heal/shield/burn/poison/shock"},
-		{"id": Catalog.OVER_9000, "value": "over 9000", "metrics": "heal/burn/poison/shock"},
-	]
-	for case in cases:
-		var id := str(case["id"])
-		var description := str(Catalog.entry(id).get("description", ""))
-		assert_true(description.contains("unit contributes"), "%s: missing unit contribution" % id)
-		assert_true(description.contains(str(case["value"])), "%s: missing value" % id)
-		assert_true(description.contains(str(case["metrics"])), "%s: missing metrics" % id)
-
-
-func test_big_dog_description_mentions_cinnabark_contribution() -> void:
-	var description := str(Catalog.entry(Catalog.BIG_DOG).get("description", ""))
-	assert_true(description.contains("Cinnabark contributes"), description)

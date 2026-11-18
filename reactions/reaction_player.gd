@@ -1,16 +1,20 @@
 extends RefCounted
-## ReactionPlayer - presents a triggered reaction.
+## ReactionPlayer - presents a triggered reaction match.
 ##
-## Logs the reaction line (console and session log), submits a NotificationRequest
-## so the shared toast queue shows it, and forwards the reaction id to an optional
-## sound sink (the caller decides which sounds to play).
+## Takes a match Dictionary ({id, case, params, species_key}), renders the user-facing
+## line via catalog/reaction_text.gd, logs it, submits a NotificationRequest so the
+## shared toast queue shows it, and forwards the reaction id to an optional sound sink.
 ## Logging is independent of toast queuing and dedupe: every reaction logs once.
 ##
-## Log format: "Brain Rot: REACTION | <id> | <detail>"
-##   e.g. "Brain Rot: REACTION | six_seven | Lives 6, Wins 7"
+## The same play() is used by gameplay (preview = false) and the dev toast preview
+## (preview = true), so the preview cannot drift from what players see.
+##
+## Log format: "Brain Rot: REACTION | <id> | <case> | <text>"
+## Preview:   "Brain Rot: PREVIEW  | <id> | <case> | <text>"
 
 const NotificationRequest = preload("../notifications/notification_request.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
+const ReactionText = preload("../catalog/reaction_text.gd")
 
 var _log_fn: Callable
 var _submit_fn: Callable
@@ -34,35 +38,46 @@ func _init(
 	_icon_fn = icon_fn
 
 
-## Play one reaction. A reaction without an id is skipped.
-func play(reaction: Dictionary) -> void:
-	var id := str(reaction.get("id", ""))
+## Play one reaction match. A match without an id is skipped.
+func play(match: Dictionary, preview: bool = false) -> void:
+	var id := str(match.get("id", ""))
 	if id.is_empty():
 		push_warning("Brain Rot: reaction without id ignored")
 		return
-	var detail := str(reaction.get("detail", ""))
-	var species_key := str(reaction.get("species_key", ""))
-	_log("Brain Rot: REACTION | %s | %s" % [id, detail])
-	_submit(id, detail, species_key)
+	var case_name := str(match.get("case", ""))
+	var params = match.get("params")
+	if not params is Dictionary:
+		params = {}
+	var text := ReactionText.render(id, case_name, params)
+	var species_key := str(match.get("species_key", ""))
+	_log("Brain Rot: %s | %s | %s | %s" % [
+		"PREVIEW" if preview else "REACTION",
+		id,
+		case_name,
+		text,
+	])
+	_submit(id, text, species_key, preview)
 	if _sound_fn.is_valid():
 		_sound_fn.call(id)
 
 
-## Play every reaction in the list, once each.
-func play_all(reactions: Array) -> void:
-	for reaction in reactions:
-		if reaction is Dictionary:
-			play(reaction)
+## Play every match in the list, once each.
+func play_all(matches: Array) -> void:
+	for match in matches:
+		if match is Dictionary:
+			play(match)
 
 
-func _submit(id: String, detail: String, species_key: String) -> void:
+func _submit(id: String, text: String, species_key: String, preview: bool) -> void:
 	if not _submit_fn.is_valid():
 		return
 	var request = NotificationRequest.new(
 		NotificationRequest.KIND_REACTION,
 		id,
 		Catalog.title_for(id),
-		detail,
+		text,
+		NotificationRequest.DEFAULT_DURATION_MS,
+		preview,
 	)
 	if not species_key.is_empty() and _icon_fn.is_valid():
 		var texture = _icon_fn.call(species_key)

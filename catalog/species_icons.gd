@@ -32,6 +32,17 @@ static func icon_for(species_key: String, db = null) -> Texture2D:
 	return icon if icon is Texture2D else null
 
 
+## Sorted species keys known to the icon index, or [] when GameDatabase is
+## unavailable. Used by the dev preview's species dropdown; callers can fall back
+## to species referenced in the catalog when this is empty.
+static func all_species_keys() -> Array:
+	if _index.is_empty():
+		_build_index(null)
+	var keys := _index.keys()
+	keys.sort()
+	return keys
+
+
 ## Drop the cached index (used by tests).
 static func reset() -> void:
 	_index = {}

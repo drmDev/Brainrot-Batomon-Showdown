@@ -60,7 +60,7 @@ func test_path_ok_allows_mod_layout() -> void:
 		"mod_main.gd", "mod.json", "README.md",
 		"audio/ui_sound.gd", "battle/high_scores.gd", "catalog/brain_rot_catalog.gd",
 		"core/auto_updater.gd", "debug/state_capture.gd", "hud/toast_view.gd",
-		"notifications/toast_catalog.gd", "reactions/reaction_player.gd",
+		"notifications/notification_host.gd", "reactions/reaction_player.gd",
 		"snapshots/game_snapshot_reader.gd", "dev/dev_config.gd",
 		"assets/icons/rainbowBrain.png", "assets/sounds/ff_fanfare.ogg",
 	]:

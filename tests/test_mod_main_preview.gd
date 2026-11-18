@@ -1,11 +1,11 @@
 extends "test_runner.gd"
 ## Regression tests for the dev toast preview's presentation wiring.
 ##
-## The preview previously bypassed the reaction sound sink, so previewing a sound
-## reaction was silent while gameplay played it. It must use the same table.
+## The preview uses the same ReactionPlayer as gameplay, so it must render text,
+## submit a toast, and forward the reaction sound identically.
 
 const ModMain = preload("../mod_main.gd")
-const ToastCatalog = preload("../notifications/toast_catalog.gd")
+const ReactionPlayer = preload("../reactions/reaction_player.gd")
 const ReactionSounds = preload("../audio/reaction_sounds.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
@@ -29,35 +29,43 @@ class FakeHost:
 		return 0
 
 
-func _preview(entry_id: String):
+func _preview(match: Dictionary):
 	var mod = ModMain.new()
 	var sounds = FakeSoundRegistry.new()
-	mod._reaction_sounds = sounds
-	mod._toast_catalog_script = ToastCatalog
-	mod._notification_host = FakeHost.new()
-	var entry := ToastCatalog.find(
-		ToastCatalog.entries(),
-		ToastCatalog.KIND_REACTION,
-		entry_id,
+	var host = FakeHost.new()
+	var player = ReactionPlayer.new(
+		Callable(),
+		func(request): host.submit(request),
+		func(id): sounds.play_for(id),
+		Callable(),
 	)
-	mod._preview_toast(entry)
-	return {"mod": mod, "sounds": sounds, "entry": entry}
+	mod._reaction_sounds = sounds
+	mod._reaction_player = player
+	mod._notification_host = host
+	mod._preview_toast(match)
+	return {"mod": mod, "sounds": sounds, "host": host}
 
 
 func test_preview_over_9000_plays_sound_and_submits_toast() -> void:
-	var result = _preview(Catalog.OVER_9000)
-	assert_false(result["entry"].is_empty(), "over_9000 must be in the catalog")
+	var result = _preview({
+		"id": Catalog.OVER_9000,
+		"case": "battle",
+		"params": {"species_key": "monster.name.cinnabark", "metric": "poison", "value": 9002},
+		"species_key": "monster.name.cinnabark",
+	})
 	assert_eq(result["sounds"].played, [Catalog.OVER_9000])
-	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
+	assert_eq(result["host"].submitted.size(), 1)
 	result["mod"].free()
 
 
-
 func test_preview_other_reaction_stays_silent_but_submits_toast() -> void:
-	var result = _preview(Catalog.SIX_SEVEN)
-	assert_false(result["entry"].is_empty(), "six_seven must be in the catalog")
+	var result = _preview({
+		"id": Catalog.SIX_SEVEN,
+		"case": "lives_wins",
+		"params": {"lives": 6, "wins": 7},
+	})
 	assert_empty(result["sounds"].played)
-	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
+	assert_eq(result["host"].submitted.size(), 1)
 	result["mod"].free()
 
 

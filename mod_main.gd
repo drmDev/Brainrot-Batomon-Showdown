@@ -38,7 +38,6 @@ var _snapshot_reader = null
 var _state_capture = null
 
 # Developer-only toast preview (created only when dev/dev_config.gd enables it).
-var _toast_catalog_script = null
 var _toast_preview_panel = null
 
 # Reactions: snapshot-driven conditions that log, submit toasts, and play sounds.
@@ -187,37 +186,23 @@ func _setup_dev_tools() -> void:
 	if DevConfig == null or not DevConfig.is_enabled():
 		return
 
-	var ToastCatalog = load(MOD_BASE_DIR.path_join("notifications/toast_catalog.gd"))
+	var Catalog = load(MOD_BASE_DIR.path_join("catalog/brain_rot_catalog.gd"))
 	var ToastPreviewPanel = load(MOD_BASE_DIR.path_join("hud/toast_preview_panel.gd"))
-	if ToastCatalog == null or ToastPreviewPanel == null or _toast_layer == null:
+	if Catalog == null or ToastPreviewPanel == null or _toast_layer == null:
 		return
 
-	_toast_catalog_script = ToastCatalog
-	_toast_preview_panel = ToastPreviewPanel.new(ToastCatalog.entries(), _preview_toast)
+	_toast_preview_panel = ToastPreviewPanel.new(Catalog.reactions(), _preview_toast)
 	_toast_preview_panel.name = "ToastPreviewPanel"
 	_toast_layer.add_child(_toast_preview_panel)
 	_print_notice("Brain Rot: dev toast preview enabled")
 
 
-## Show a registered toast without evaluating rules or touching progress/saves.
-func _preview_toast(entry: Dictionary) -> void:
-	if _toast_catalog_script == null:
+## Show a reaction match exactly as gameplay would, without evaluating rules or
+## touching progress/saves.
+func _preview_toast(match: Dictionary) -> void:
+	if _reaction_player == null:
 		return
-	_log_event("PREVIEW | %s:%s" % [
-		str(entry.get("kind", "")),
-		str(entry.get("id", "")),
-	])
-	# Keep the preview aligned with gameplay presentation: reaction entries use
-	# the same table-driven sound mapping.
-	if str(entry.get("kind", "")) == _toast_catalog_script.KIND_REACTION:
-		_play_reaction_sound(str(entry.get("id", "")))
-	var request = _toast_catalog_script.make_request(entry)
-	var species_key := str(entry.get("species", ""))
-	if not species_key.is_empty() and _species_icons != null:
-		var texture = _species_icons.icon_for(species_key)
-		if texture is Texture2D:
-			request.icon_texture = texture
-	_submit_notification(request)
+	_reaction_player.play(match, true)
 
 
 ## Create/open the session log and write the startup banner (Creature Comforts layout).
@@ -279,7 +264,7 @@ func _inspect_current_phase() -> void:
 	# The game promotes the completed run into RunManager.data before the visual
 	# battle ends, so lives/wins/income there already reflect the post-battle
 	# result. Polling mid-battle would fire 6 7 / 6 9 before the player sees the
-	# next day. Battle- and outcome-scoped reactions still fire at battle_over.
+	# next day. Battle-scoped reactions still fire at battle_over.
 	_poll_reactions(run_snapshot, is_shop)
 	_log_run_progress(run_snapshot)
 
@@ -299,18 +284,10 @@ func _inspect_current_phase() -> void:
 			# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
 			# RunManager.data may already be the promoted/completed run.
 			var player_run = _get_battle_player_run(state, run)
-			battle_snapshot = _snapshot_reader.read_battle(state, player_run, run)
+			battle_snapshot = _snapshot_reader.read_battle(state, player_run)
 			var usable: bool = _snapshot_reader.is_battle_snapshot_usable(battle_snapshot)
-			var outcome = battle_snapshot.get("outcome")
-			var outcome_text := "absent"
-			if outcome is Dictionary:
-				outcome_text = "wins=%s lives=%s" % [
-					str(outcome.get("wins", "?")),
-					str(outcome.get("lives", "?")),
-				]
-			_log_event("BATTLE COMPLETE | usable=%s outcome=%s units=%s team=%s trainer=%s" % [
+			_log_event("BATTLE COMPLETE | usable=%s units=%s team=%s trainer=%s" % [
 				str(usable),
-				outcome_text,
 				str(battle_snapshot.get("battle_units").size()) if battle_snapshot.get("battle_units") is Array else "absent",
 				str(battle_snapshot.get("team").size()) if battle_snapshot.get("team") is Array else "absent",
 				str(battle_snapshot.get("trainer_id", "absent")),

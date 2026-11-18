@@ -2,18 +2,19 @@ extends RefCounted
 ## ReactionEvaluator - detects "reactions" from game snapshots.
 ##
 ## Rules only: consumes the plain snapshots produced by
-## snapshots/game_snapshot_reader.gd and returns newly triggered reaction
-## dictionaries. It never touches live game objects, files, UI, or any persisted
-## state, so a reaction fires purely from the current snapshot.
+## snapshots/game_snapshot_reader.gd and returns newly triggered reaction matches.
+## It never touches live game objects, files, UI, or any persisted state, so a
+## reaction fires purely from the current snapshot.
 ##
-##   poll(run_snapshot)            -> run-scoped reactions
-##   poll_battle(battle_snapshot)  -> battle-scoped reactions
+##   poll(run_snapshot)            -> run-scoped reaction matches
+##   poll_battle(battle_snapshot)  -> battle-scoped reaction matches
 ##   reset_run()                   -> clear everything for a new run
 ##   reset_battle()                -> clear battle-scoped tracking for a new battle
 ##
-## Each returned reaction is {"id": String, "detail": String}.
+## Each returned match is {"id": String, "case": String, "params": Dictionary,
+## "species_key": String}. catalog/reaction_text.gd turns that into the user text.
 ##
-## Reaction metadata and checks live in catalog/brain_rot_catalog.gd. This file
+## Reaction metadata and conditions live in catalog/brain_rot_catalog.gd. This file
 ## owns occurrence tracking and the battle tie-break; the catalog owns the
 ## per-reaction conditions.
 ##
@@ -30,9 +31,6 @@ extends RefCounted
 ##   BATTLE_METRIC_ORDER. Different battle reactions are tracked independently, so
 ##   several of them can fire in the same battle. A battle rule may also restrict
 ##   matches to a species via its `species` key (Big Dog is Cinnabark-only).
-## - Outcome-scoped: evaluated only at battle_over from the battle snapshot's
-##   `outcome` (the committed promoted-run totals). Occurrence is run-scoped, so
-##   reset_battle() does not re-arm it.
 ## - An empty snapshot does NOT reset anything.
 ##
 ## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
@@ -43,7 +41,6 @@ const Catalog = preload("../catalog/brain_rot_catalog.gd")
 # Evaluation scope labels for registered_rows() (dev tooling / catalog).
 const SCOPE_RUN := Catalog.SCOPE_RUN
 const SCOPE_BATTLE := Catalog.SCOPE_BATTLE
-const SCOPE_OUTCOME := Catalog.SCOPE_OUTCOME
 
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
@@ -60,7 +57,7 @@ var _occurrences: Dictionary = {}
 var _battle_fired: Dictionary = {}
 
 
-## Poll a run snapshot. Returns newly triggered run-scoped reactions (empty most polls).
+## Poll a run snapshot. Returns newly triggered run-scoped matches (empty most polls).
 func poll(run_snapshot: Dictionary) -> Array:
 	var triggered: Array = []
 	if run_snapshot.is_empty():
@@ -70,13 +67,14 @@ func poll(run_snapshot: Dictionary) -> Array:
 		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		var detail := Catalog.run_detail(id, run_snapshot)
-		if detail.is_empty():
+		var match: Dictionary = Catalog.run_match(id, run_snapshot)
+		if match.is_empty():
 			continue
 		_occurrences[id] = 1
 		triggered.append({
 			"id": id,
-			"detail": _format_detail(definition, detail),
+			"case": str(match.get("case", "")),
+			"params": match.get("params", {}),
 			"species_key": _species_key_from_definition(definition),
 		})
 	return triggered
@@ -109,40 +107,19 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 			if found.is_empty():
 				continue
 			_battle_fired[id] = true
-			var detail := "%s contributed %s %s in battle!" % [
-				_species_display_name_at(team, int(found.get("slot", -1))),
-				_abbreviate_number(int(found.get("value", 0))),
-				str(found.get("label", "")),
-			]
+			var species_key := _species_key_at(team, int(found.get("slot", -1)))
 			triggered.append({
 				"id": id,
-				"detail": _format_detail(definition, detail),
-				"species_key": _species_key_at(team, int(found.get("slot", -1))),
+				"case": "battle",
+				"params": {
+					"species_key": species_key,
+					"metric": str(found.get("label", "")),
+					"value": int(found.get("value", 0)),
+				},
+				"species_key": species_key,
 			})
 
-	_poll_battle_outcomes(triggered, battle_snapshot)
 	return triggered
-
-
-## Append outcome-based reactions from the committed post-battle totals. Requires
-## battle_over (poll_battle already checked) and integer wins/lives. Occurrence is
-## run-scoped, so the same run cannot fire it twice and reset_battle() keeps it armed.
-func _poll_battle_outcomes(triggered: Array, battle_snapshot: Dictionary) -> void:
-	var outcome = battle_snapshot.get("outcome")
-	if not outcome is Dictionary:
-		return
-	for definition in Catalog.reactions():
-		var id := str(definition.get("id", ""))
-		if id.is_empty() or _occurrences.has(id):
-			continue
-		var detail := Catalog.outcome_detail(id, outcome)
-		if detail.is_empty():
-			continue
-		_occurrences[id] = 1
-		triggered.append({
-			"id": id,
-			"detail": _format_detail(definition, detail),
-		})
 
 
 ## Clear all tracking. Call at a verified run transition.
@@ -159,14 +136,6 @@ func reset_battle() -> void:
 ## How many times this run-scoped reaction has triggered in the current run (0 or 1).
 func occurrence_count(id: String) -> int:
 	return int(_occurrences.get(id, 0))
-
-
-## Apply a definition's optional message template to a generated detail line.
-func _format_detail(definition: Dictionary, detail: String) -> String:
-	var message := str(definition.get("message", ""))
-	if message.is_empty():
-		return detail
-	return message.replace("{detail}", detail)
 
 
 ## Lowest player-side slot with a metric satisfying `rule`, plus the first
@@ -228,16 +197,6 @@ func _find_battle_match(units: Array, team: Array, rule: Dictionary) -> Dictiona
 	return {"slot": best_slot, "label": best_label, "value": best_value}
 
 
-## Abbreviate a large number for the toast: 1,000,000+ becomes "1.0M", 1,000+ becomes
-## "1.0K". Smaller values are shown as-is. Keeps the detail line compact.
-func _abbreviate_number(value: int) -> String:
-	if value >= 1000000:
-		return "%.1fM" % (float(value) / 1000000.0)
-	if value >= 1000:
-		return "%.1fK" % (float(value) / 1000.0)
-	return str(value)
-
-
 ## Species key of the monster in a team slot, or "" when unavailable. This is the
 ## value the presentation layer uses to look up the monster's icon.
 func _species_key_at(team: Array, slot: int) -> String:
@@ -253,28 +212,3 @@ func _species_key_at(team: Array, slot: int) -> String:
 ## reactions tied to a specific monster (apes/oh_yeah/herd) carry this metadata.
 func _species_key_from_definition(definition: Dictionary) -> String:
 	return str(definition.get("species", ""))
-
-
-## Display name of the species in a team slot, or "Unknown" when unavailable.
-func _species_display_name_at(team: Array, slot: int) -> String:
-	if slot < 0 or slot >= team.size():
-		return "Unknown"
-	var entry = team[slot]
-	if not entry is Dictionary:
-		return "Unknown"
-	var key := str(entry.get("name_key", ""))
-	return _format_species_name(key) if not key.is_empty() else "Unknown"
-
-
-## Species key -> display name ("monster.name.beetdown" -> "Beetdown").
-## Mirrors Creature Comforts' log_formatter.format_species_name: prefer a
-## TranslationServer entry, then strip the key prefix and capitalize.
-func _format_species_name(species_key: String) -> String:
-	if TranslationServer.has_method("translate"):
-		var translated := TranslationServer.translate(species_key)
-		if translated != species_key:
-			return translated
-	var name_key := species_key
-	if "." in name_key:
-		name_key = name_key.split(".")[-1]
-	return name_key.capitalize()

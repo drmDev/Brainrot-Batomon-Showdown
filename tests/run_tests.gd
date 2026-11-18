@@ -21,8 +21,8 @@ var _test_scripts := {
 	"catalog": preload("test_catalog.gd"),
 	"reaction_evaluator": preload("test_reaction_evaluator.gd"),
 	"reaction_player": preload("test_reaction_player.gd"),
+	"reaction_text": preload("test_reaction_text.gd"),
 	"species_icons": preload("test_species_icons.gd"),
-	"toast_catalog": preload("test_toast_catalog.gd"),
 	"toast_preview_panel": preload("test_toast_preview_panel.gd"),
 	"toast_view": preload("test_toast_view.gd"),
 }

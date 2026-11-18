@@ -1,33 +1,30 @@
 extends RefCounted
-## BrainRotCatalog - the single source of truth for every reaction.
+## BrainRotCatalog - the single source of truth for reaction detection metadata.
 ##
-## Adding an entry is one metadata row in ENTRIES plus one check function below.
-## Removing an entry is deleting that row, its check function, and its tests.
-## There is no condition DSL: each check is plain typed GDScript.
+## Detection and wording are separate:
+## - This file owns the reaction entries, ids, battle rules, and the run-scoped
+##   condition checks. Checks return a match ({case, params}) or {} - no user text.
+## - catalog/reaction_text.gd owns every line a player reads.
 ##
 ## Entry shape:
 ##   {
 ##     "kind": KIND_REACTION,                      # required
 ##     "id": String,                               # required, unique
 ##     "title": String,                            # required, toast title
-##     "description": String,                      # required, toast body / preview text
 ##     "icon": String,                             # optional, badge text; derived from id when absent
 ##     "species": String,                          # optional, species name_key for the monster icon
-##     "scopes": [SCOPE_RUN | SCOPE_BATTLE | SCOPE_OUTCOME, ...],  # required
-##     "message": String,                          # optional, "{detail}" is replaced
+##     "scopes": [SCOPE_RUN | SCOPE_BATTLE, ...],  # required
 ##     "sound": {"file": String, "volume_db": float},  # optional
 ##   }
 ##
 ## Reaction checks:
-##   run_detail(id, snapshot)      -> detail String, or "" when it does not match
+##   run_match(id, snapshot)       -> {"case": String, "params": Dictionary}, or {}
 ##   battle_rule(id)               -> {"value": int, "strict": bool, "metrics": [label, ...], "species"?: String}
-##   outcome_detail(id, outcome)   -> detail String, or "" when it does not match
 
 const KIND_REACTION := "reaction"
 
 const SCOPE_RUN := "run"
 const SCOPE_BATTLE := "battle"
-const SCOPE_OUTCOME := "outcome"
 
 ## Battle metric label -> unit record key. Labels are what battle rules use.
 const BATTLE_METRICS := {
@@ -58,7 +55,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": SIX_SEVEN,
 		"title": "SIX SEVEN!",
-		"description": "Lives 6 with Day or Wins 7, income 67, or a unit contributes 67 damage/heal/shield/burn/poison/shock in battle",
 		"icon": "67",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -66,7 +62,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": SIX_NINE,
 		"title": "SIX NINE!",
-		"description": "Lives 6 with Day or Wins 9, income 69, or a unit contributes 69 damage/heal/shield/burn/poison/shock in battle",
 		"icon": "69",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -74,7 +69,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": FOUR_TWENTY,
 		"title": "BLAZE IT!",
-		"description": "Income 420, or a unit contributes 420 damage/heal/shield/burn/poison/shock in battle",
 		"icon": "420",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -82,7 +76,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": SIX_SIX_SIX,
 		"title": "NUMBER OF THE BEAST!",
-		"description": "Income 666, or a unit contributes 666 damage/heal/shield/burn/poison/shock in battle",
 		"icon": "666",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -90,7 +83,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": OVER_9000,
 		"title": "IT'S OVER 9000!",
-		"description": "Income over 9000, or a unit contributes over 9000 heal/burn/poison/shock in battle",
 		"icon": "9000",
 		"sound": {"file": "over-9000.ogg"},
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
@@ -99,7 +91,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": APES_TOGETHER,
 		"title": "APES TOGETHER, STRONG!",
-		"description": "Double sunsage!",
 		"icon": "AT",
 		"species": "monster.name.sunsage",
 		"scopes": [SCOPE_RUN],
@@ -108,7 +99,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": BIG_DOG,
 		"title": "BIG DOG, BEST DOG!",
-		"description": "Cinnabark contributes over 1M shield in battle",
 		"icon": "BD",
 		"species": "monster.name.cinnabark",
 		"scopes": [SCOPE_BATTLE],
@@ -117,7 +107,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": OH_YEAH,
 		"title": "OH YEAH!",
-		"description": "Double kool aid man!",
 		"icon": "OY",
 		"species": "monster.name.beetdown",
 		"scopes": [SCOPE_RUN],
@@ -126,7 +115,6 @@ const ENTRIES := [
 		"kind": KIND_REACTION,
 		"id": HERD_U_LIEK_MUDKIPZ,
 		"title": "HERD U LIEK MUDKIPZ!",
-		"description": "Double Dewlotls!",
 		"icon": "HM",
 		"species": "monster.name.dewlotl",
 		"scopes": [SCOPE_RUN],
@@ -211,11 +199,6 @@ static func sounds() -> Dictionary:
 	return out
 
 
-## Human-readable description of an entry, for the dev toast preview.
-static func describe_entry(entry_data: Dictionary) -> String:
-	return str(entry_data.get("description", ""))
-
-
 ## Every registered reaction scope, for dev tooling and schema tests.
 static func registered_rows() -> Array:
 	var rows: Array = []
@@ -228,26 +211,28 @@ static func registered_rows() -> Array:
 
 # --- Reaction checks -------------------------------------------------------
 
-## Detail line for a run-scoped reaction, or "" when it does not match.
-static func run_detail(id: String, snapshot: Dictionary) -> String:
+## Match for a run-scoped reaction, or {}. When several conditions match at once,
+## exactly one case is chosen by fixed priority (lives_day_wins > lives_day >
+## lives_wins > income), so one toast never mixes two conditions.
+static func run_match(id: String, snapshot: Dictionary) -> Dictionary:
 	match id:
 		SIX_SEVEN:
-			return _six_seven_run(snapshot)
+			return _six_seven_match(snapshot)
 		SIX_NINE:
-			return _six_nine_run(snapshot)
+			return _six_nine_match(snapshot)
 		FOUR_TWENTY:
-			return _income_detail(snapshot, 420)
+			return _income_match(snapshot, 420)
 		SIX_SIX_SIX:
-			return _income_detail(snapshot, 666)
+			return _income_match(snapshot, 666)
 		OVER_9000:
-			return _income_gt_detail(snapshot, 9000)
+			return _income_gt_match(snapshot, 9000)
 		APES_TOGETHER:
-			return _apes_together_detail(snapshot)
+			return _apes_together_match(snapshot)
 		OH_YEAH:
-			return _twins_evolution_detail(snapshot, "monster.name.beetdown", "Beetdown")
+			return _twins_evolution_match(snapshot, "monster.name.beetdown")
 		HERD_U_LIEK_MUDKIPZ:
-			return _twins_evolution_detail(snapshot, "monster.name.dewlotl", "Dewlotl")
-	return ""
+			return _twins_evolution_match(snapshot, "monster.name.dewlotl")
+	return {}
 
 
 ## Battle comparison for a battle-scoped reaction, or {} when it has none.
@@ -271,69 +256,55 @@ static func battle_rule(id: String) -> Dictionary:
 	return {}
 
 
-## Detail line for an outcome-scoped reaction, or "" when it does not match.
-## No outcome-scoped reactions are currently registered.
-static func outcome_detail(_id: String, _outcome: Dictionary) -> String:
-	return ""
+static func _six_seven_match(snapshot: Dictionary) -> Dictionary:
+	return _lives_day_wins_income_match(snapshot, 6, 7, 67)
 
 
-static func _six_seven_run(snapshot: Dictionary) -> String:
-	var parts: PackedStringArray = []
-	var base := _lives_day_wins_run(snapshot, 6, 7)
-	if not base.is_empty():
-		parts.append(base)
-	var income := _income_detail(snapshot, 67)
-	if not income.is_empty():
-		parts.append(income)
-	return ", ".join(parts)
+static func _six_nine_match(snapshot: Dictionary) -> Dictionary:
+	return _lives_day_wins_income_match(snapshot, 6, 9, 69)
 
 
-static func _six_nine_run(snapshot: Dictionary) -> String:
-	var parts: PackedStringArray = []
-	var base := _lives_day_wins_run(snapshot, 6, 9)
-	if not base.is_empty():
-		parts.append(base)
-	var income := _income_detail(snapshot, 69)
-	if not income.is_empty():
-		parts.append(income)
-	return ", ".join(parts)
-
-
-## "Lives 6, Day 7" / "Lives 6, Wins 7" / "Lives 6, Day 7, Wins 7", or "".
-static func _lives_day_wins_run(snapshot: Dictionary, lives_expected: int, day_or_wins: int) -> String:
+## Shared priority for six_seven / six_nine. Lives must be lives_expected; day and
+## wins match the same target; income is the fallback.
+static func _lives_day_wins_income_match(snapshot: Dictionary, lives_expected: int, target: int, income_expected: int) -> Dictionary:
 	var lives = _int(snapshot, "lives")
-	if lives == null or int(lives) != lives_expected:
-		return ""
-	var parts: PackedStringArray = ["Lives %d" % lives_expected]
 	var day = _int(snapshot, "current_round")
 	var wins = _int(snapshot, "current_wins")
-	if day != null and int(day) == day_or_wins:
-		parts.append("Day %d" % day_or_wins)
-	if wins != null and int(wins) == day_or_wins:
-		parts.append("Wins %d" % day_or_wins)
-	if parts.size() == 1:
-		return ""
-	return ", ".join(parts)
-
-
-static func _income_detail(snapshot: Dictionary, expected: int) -> String:
 	var income = _int(snapshot, "income")
-	if income == null or int(income) != expected:
-		return ""
-	return "Income %d" % expected
+
+	var lives_ok := lives != null and int(lives) == lives_expected
+	var day_ok := day != null and int(day) == target
+	var wins_ok := wins != null and int(wins) == target
+
+	if lives_ok and day_ok and wins_ok:
+		return {"case": "lives_day_wins", "params": {"lives": lives_expected, "day": target, "wins": target}}
+	if lives_ok and day_ok:
+		return {"case": "lives_day", "params": {"lives": lives_expected, "day": target}}
+	if lives_ok and wins_ok:
+		return {"case": "lives_wins", "params": {"lives": lives_expected, "wins": target}}
+	if income != null and int(income) == income_expected:
+		return {"case": "income", "params": {"income": income_expected}}
+	return {}
 
 
-static func _income_gt_detail(snapshot: Dictionary, threshold: int) -> String:
+static func _income_match(snapshot: Dictionary, expected: int) -> Dictionary:
 	var income = _int(snapshot, "income")
-	if income == null or int(income) <= threshold:
-		return ""
-	return "Income %d" % int(income)
+	if income != null and int(income) == expected:
+		return {"case": "income", "params": {"income": expected}}
+	return {}
 
 
-static func _apes_together_detail(snapshot: Dictionary) -> String:
+static func _income_gt_match(snapshot: Dictionary, threshold: int) -> Dictionary:
+	var income = _int(snapshot, "income")
+	if income != null and int(income) > threshold:
+		return {"case": "income", "params": {"income": int(income)}}
+	return {}
+
+
+static func _apes_together_match(snapshot: Dictionary) -> Dictionary:
 	var trainer = snapshot.get("trainer_id")
 	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
-		return ""
+		return {}
 	for list_name in ["team", "bench"]:
 		var list = snapshot.get(list_name)
 		if not list is Array:
@@ -347,15 +318,15 @@ static func _apes_together_detail(snapshot: Dictionary) -> String:
 			if typeof(level) != TYPE_INT:
 				continue
 			if int(level) >= 3:
-				return "Trainer twins, Sunsage level %d" % int(level)
-	return ""
+				return {"case": "evolved", "params": {"level": int(level)}}
+	return {}
 
 
 ## Twins double-evolution: owns a level-3 evolved unit named by `species_key`.
-static func _twins_evolution_detail(snapshot: Dictionary, species_key: String, display_name: String) -> String:
+static func _twins_evolution_match(snapshot: Dictionary, species_key: String) -> Dictionary:
 	var trainer = snapshot.get("trainer_id")
 	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
-		return ""
+		return {}
 	for list_name in ["team", "bench"]:
 		var list = snapshot.get(list_name)
 		if not list is Array:
@@ -369,8 +340,8 @@ static func _twins_evolution_detail(snapshot: Dictionary, species_key: String, d
 			if typeof(level) != TYPE_INT:
 				continue
 			if int(level) >= 3:
-				return "Trainer twins, %s level %d" % [display_name, int(level)]
-	return ""
+				return {"case": "evolved", "params": {"level": int(level)}}
+	return {}
 
 
 ## Integer value of a snapshot key, or null when missing/non-int.
