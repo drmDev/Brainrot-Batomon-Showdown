@@ -1,9 +1,9 @@
 {
-	"name": "twins_double_evolution",
+	"name": "oh_yeah",
 	"steps": [
 		{
 			"kind": "run",
-			"trainer_id": "twins",
+			"trainer_id": "musician",
 			"current_round": 3,
 			"team": [{"name_key": "monster.name.beetbud", "level": 2}],
 			"bench": [],
@@ -11,7 +11,7 @@
 		},
 		{
 			"kind": "run",
-			"trainer_id": "twins",
+			"trainer_id": "musician",
 			"current_round": 3,
 			"team": [{"name_key": "monster.name.beetdown", "level": 3}],
 			"bench": [],

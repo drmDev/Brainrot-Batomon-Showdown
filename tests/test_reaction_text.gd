@@ -22,7 +22,7 @@ func test_render_fills_battle_placeholders() -> void:
 
 func test_render_fills_level_placeholder() -> void:
 	assert_eq(
-		ReactionText.render("apes_together", "evolved", {}),
+		ReactionText.render("apes_together", "owned", {}),
 		"With Twins, made two Sunsages!",
 	)
 
@@ -50,7 +50,7 @@ func test_placeholders_reports_used_tokens() -> void:
 		ReactionText.placeholders("big_dog_best_dog", "battle"),
 		["species", "value"],
 	)
-	assert_empty(ReactionText.placeholders("apes_together", "evolved"))
+	assert_empty(ReactionText.placeholders("apes_together", "owned"))
 
 
 func test_missing_case_falls_back_to_title() -> void:

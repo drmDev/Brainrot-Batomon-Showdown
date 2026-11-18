@@ -56,6 +56,7 @@ const ENTRIES := [
 		"id": SIX_SEVEN,
 		"title": "SIX SEVEN!",
 		"icon": "67",
+		"icon_file": "67.png",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
 	{
@@ -63,6 +64,7 @@ const ENTRIES := [
 		"id": SIX_NINE,
 		"title": "NICE!",
 		"icon": "69",
+		"icon_file": "nice.png",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
 	{
@@ -70,6 +72,7 @@ const ENTRIES := [
 		"id": FOUR_TWENTY,
 		"title": "BLAZE IT!",
 		"icon": "420",
+		"icon_file": "snoop420.png",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
 	{
@@ -77,6 +80,7 @@ const ENTRIES := [
 		"id": SIX_SIX_SIX,
 		"title": "HAIL SATAN!",
 		"icon": "666",
+		"icon_file": "666.png",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
 	{
@@ -84,6 +88,7 @@ const ENTRIES := [
 		"id": OVER_9000,
 		"title": "IT'S OVER 9000!",
 		"icon": "9000",
+		"icon_file": "over9000.png",
 		"sound": {"file": "over-9000.ogg"},
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -145,6 +150,10 @@ static func title_for(id: String) -> String:
 
 ## Badge text for an id: the entry's explicit "icon" when present, otherwise a
 ## value derived from the id string. Unknown/empty ids yield "?".
+static func icon_file_for(id: String) -> String:
+	return str(entry(id).get("icon_file", ""))
+
+
 static func icon_for(id: String) -> String:
 	var found := entry(id)
 	if not found.is_empty():
@@ -152,6 +161,22 @@ static func icon_for(id: String) -> String:
 		if typeof(explicit) == TYPE_STRING and not str(explicit).is_empty():
 			return str(explicit)
 	return _derive_icon(id)
+
+
+## Texture for a reaction's authored icon_file, or null when absent/missing.
+## Non-monster reactions (67, nice, 420, 666, over 9000) use this instead of
+## placeholder text; monster reactions leave icon_file absent and use their
+## species icon resolved elsewhere.
+static func icon_texture_for(id: String) -> Texture2D:
+	var found := entry(id)
+	var file_name := str(found.get("icon_file", ""))
+	if file_name.is_empty():
+		return null
+	var path := ProjectSettings.globalize_path("res://assets/icons/" + file_name)
+	var image := Image.load_from_file(path)
+	if image == null:
+		return null
+	return ImageTexture.create_from_image(image)
 
 
 ## Derive badge text from an id when no explicit icon is authored. Number words
@@ -229,9 +254,9 @@ static func run_match(id: String, snapshot: Dictionary) -> Dictionary:
 		APES_TOGETHER:
 			return _apes_together_match(snapshot)
 		OH_YEAH:
-			return _twins_evolution_match(snapshot, "monster.name.beetdown")
+			return _beetdown_match(snapshot)
 		HERD_U_LIEK_MUDKIPZ:
-			return _twins_evolution_match(snapshot, "monster.name.dewlotl")
+			return _dewlotl_match(snapshot)
 	return {}
 
 
@@ -302,15 +327,24 @@ static func _income_gt_match(snapshot: Dictionary, threshold: int) -> Dictionary
 
 
 static func _apes_together_match(snapshot: Dictionary) -> Dictionary:
-	return _twins_evolution_match(snapshot, "monster.name.sunsage")
-
-
-## Twins reaction: trainer is Twins and the team/bench contains the species. The
-## evolved form is the only way that species can exist for Twins, so no level check.
-static func _twins_evolution_match(snapshot: Dictionary, species_key: String) -> Dictionary:
 	var trainer = snapshot.get("trainer_id")
 	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
 		return {}
+	return _has_species(snapshot, "monster.name.sunsage", -1)
+
+
+## OH_YEAH: owns a level-3 Beetdown (any trainer).
+static func _beetdown_match(snapshot: Dictionary) -> Dictionary:
+	return _has_species(snapshot, "monster.name.beetdown", 3)
+
+
+## HERD_U_LIEK_MUDKIPZ: owns a level-3 Dewlotl (any trainer).
+static func _dewlotl_match(snapshot: Dictionary) -> Dictionary:
+	return _has_species(snapshot, "monster.name.dewlotl", 3)
+
+
+## Team/bench contains `species_key` at `level_required` (or any level when -1).
+static func _has_species(snapshot: Dictionary, species_key: String, level_required: int = -1) -> Dictionary:
 	for list_name in ["team", "bench"]:
 		var list = snapshot.get(list_name)
 		if not list is Array:
@@ -318,8 +352,13 @@ static func _twins_evolution_match(snapshot: Dictionary, species_key: String) ->
 		for monster in list:
 			if not monster is Dictionary:
 				continue
-			if str(monster.get("name_key", "")) == species_key:
-				return {"case": "evolved", "params": {}}
+			if str(monster.get("name_key", "")) != species_key:
+				continue
+			if level_required >= 0:
+				var level = monster.get("level")
+				if typeof(level) != TYPE_INT or int(level) != level_required:
+					continue
+			return {"case": "owned", "params": {}}
 	return {}
 
 

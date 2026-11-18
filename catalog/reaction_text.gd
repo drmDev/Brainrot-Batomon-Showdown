@@ -54,13 +54,13 @@ const TEMPLATES := {
 		"battle": "{species} hit {value} {metric} in battle.",
 	},
 	"apes_together": {
-		"evolved": "With Twins, made two Sunsages!",
+		"owned": "With Twins, made two Sunsages!",
 	},
 	"oh_yeah": {
-		"evolved": "With Twins, made two Beetdowns!",
+		"owned": "(Kool-Aid Man): Here comes the Beetdown!",
 	},
 	"herd_u_liek_mudkipz": {
-		"evolved": "With Twins, made two Dewlotls!",
+		"owned": "A wizard has turned you into a mudkip. Is this awesome (Y/N)?",
 	},
 	"big_dog_best_dog": {
 		"battle": "{species} put up {value} shield in battle. What a good boy!",

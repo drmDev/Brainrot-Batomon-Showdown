@@ -860,7 +860,7 @@ func test_apes_together_triggers_for_twins_with_a_level3_sunsage() -> void:
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), APES_TOGETHER)
-		_assert_run_case(earned[0], "evolved")
+		_assert_run_case(earned[0], "owned")
 
 
 func test_apes_together_does_not_trigger_for_other_trainers() -> void:
@@ -909,32 +909,36 @@ func _run_day(trainer: String, day: int, team: Array, bench: Array = []) -> Dict
 	}
 
 
-func test_oh_yeah_triggers_for_twins_with_level3_beetdown() -> void:
+func test_oh_yeah_triggers_with_level3_beetdown() -> void:
 	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 3)]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), Catalog.OH_YEAH)
-		_assert_run_case(earned[0], "evolved")
+		_assert_run_case(earned[0], "owned")
 
 
-func test_oh_yeah_triggers_regardless_of_level() -> void:
-	assert_eq(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 2)])).size(), 1)
+func test_oh_yeah_triggers_for_non_twins_trainer() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(BEETDOWN, 3)])).size(), 1)
 
 
-func test_oh_yeah_does_not_trigger_for_other_trainers() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(BEETDOWN, 3)])))
+func test_oh_yeah_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 2)])))
 
 
-func test_herd_u_liek_mudkipz_triggers_for_twins_with_level3_dewlotl() -> void:
+func test_herd_u_liek_mudkipz_triggers_with_level3_dewlotl() -> void:
 	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 3)]))
 	assert_eq(earned.size(), 1)
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), Catalog.HERD_U_LIEK_MUDKIPZ)
-		_assert_run_case(earned[0], "evolved")
+		_assert_run_case(earned[0], "owned")
 
 
-func test_herd_u_liek_mudkipz_triggers_regardless_of_level() -> void:
-	assert_eq(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])).size(), 1)
+func test_herd_u_liek_mudkipz_triggers_for_non_twins_trainer() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(DEWLOTL, 3)])).size(), 1)
+
+
+func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
 
 
 func test_converted_reactions_fire_once_per_run() -> void:

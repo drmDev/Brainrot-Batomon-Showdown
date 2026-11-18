@@ -10,11 +10,17 @@ extends Control
 
 const Styles = preload("styles.gd")
 
+# Loose PNG reaction icons (67/nice/420/666/over9000) need slightly different
+# vertical treatment than the game's monster icons, which are already placed.
+const PNG_ICON_DOWN := 2.0
+const PNG_ICON_HEIGHT_REDUCE := 2.0
+
 var _header_label: Label
 var _title_label: Label
 var _description_label: Label
 var _badge_label: Label
 var _badge_texture: Texture2D = null
+var _badge_texture_adjust := false
 var _panel_style: StyleBoxFlat
 var _badge_style: StyleBoxFlat
 var _badge_rect := Rect2()
@@ -73,6 +79,7 @@ func present(request) -> void:
 		Styles.BADGE_FONT_SIZE if icon.length() <= 2 else Styles.BADGE_FONT_SIZE_SMALL,
 	)
 	_badge_texture = request.icon_texture if request.icon_texture is Texture2D else null
+	_badge_texture_adjust = bool(request.get("icon_texture_adjust"))
 	_badge_label.visible = _badge_texture == null
 	layout()
 	show()
@@ -126,18 +133,26 @@ func _draw() -> void:
 	_panel_style.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
 	_badge_style.draw(get_canvas_item(), _badge_rect)
 	if _badge_texture is Texture2D:
-		_draw_texture_fit(_badge_texture, _badge_rect)
+		_draw_texture_fit(_badge_texture, _badge_rect, _badge_texture_adjust)
 
 
 ## Draw a texture inside `rect` at its natural aspect ratio (contain), centred.
-func _draw_texture_fit(tex: Texture2D, rect: Rect2) -> void:
+## `adjust` is true for loose PNG reaction icons, which are slightly too tall and
+## need a couple pixels down plus a small height reduction. Monster icons keep the
+## existing placement.
+func _draw_texture_fit(tex: Texture2D, rect: Rect2, adjust := false) -> void:
 	if tex == null:
 		return
 	var tex_size := tex.get_size()
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
 		return
-	var scale := minf(rect.size.x / tex_size.x, rect.size.y / tex_size.y)
+	var draw_rect := rect
+	if adjust:
+		draw_rect.position.y += PNG_ICON_DOWN
+		draw_rect.size.y = maxf(1.0, draw_rect.size.y - PNG_ICON_HEIGHT_REDUCE)
+	var scale := minf(draw_rect.size.x / tex_size.x, draw_rect.size.y / tex_size.y)
 	var draw_size := tex_size * scale
-	var pos := rect.position + (rect.size - draw_size) * 0.5
-	pos.y -= 2.0 # move it up a couple pixels for better alignment
+	var pos := draw_rect.position + (draw_rect.size - draw_size) * 0.5
+	if not adjust:
+		pos.y -= 2.0 # move monster icons up a couple pixels for better alignment
 	draw_texture_rect(tex, Rect2(pos, draw_size), false)

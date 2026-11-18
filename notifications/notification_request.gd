@@ -8,6 +8,7 @@ extends RefCounted
 ## Construct with .new(kind, id, title, description[, duration_ms, allow_duplicate]).
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
+const PanelIcons = preload("../hud/panel_icons.gd")
 
 const KIND_REACTION := "reaction"
 
@@ -23,6 +24,7 @@ var description := ""
 var id := ""
 var icon := ""
 var icon_texture: Texture2D = null
+var icon_texture_adjust := false
 var duration_ms := DEFAULT_DURATION_MS
 var allow_duplicate := false
 
@@ -42,6 +44,10 @@ func _init(
 	description = description_text
 	id = id_value
 	icon = Catalog.icon_for(id_value)
+	var icon_file := Catalog.icon_file_for(id_value)
+	if not icon_file.is_empty():
+		icon_texture = PanelIcons.load_icon(get_script().resource_path, icon_file)
+		icon_texture_adjust = true
 	duration_ms = duration if duration > 0 else DEFAULT_DURATION_MS
 	allow_duplicate = allow_dup
 

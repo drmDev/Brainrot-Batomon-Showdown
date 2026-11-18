@@ -101,6 +101,25 @@ func test_every_entry_has_short_icon_text() -> void:
 		assert_true(icon.length() <= 4, "icon too long for " + id + ": " + icon)
 
 
+func test_non_monster_reactions_have_icon_textures() -> void:
+	var expected := {
+		Catalog.SIX_SEVEN: "67.png",
+		Catalog.SIX_NINE: "nice.png",
+		Catalog.FOUR_TWENTY: "snoop420.png",
+		Catalog.SIX_SIX_SIX: "666.png",
+		Catalog.OVER_9000: "over9000.png",
+	}
+	for id in expected:
+		var path := "res://assets/icons/" + str(expected[id])
+		assert_true(FileAccess.file_exists(path), "missing icon: " + path)
+		assert_true(Catalog.icon_texture_for(id) is Texture2D, "missing texture for " + id)
+
+
+func test_monster_reactions_do_not_author_icon_file() -> void:
+	for id in [Catalog.APES_TOGETHER, Catalog.BIG_DOG, Catalog.OH_YEAH, Catalog.HERD_U_LIEK_MUDKIPZ]:
+		assert_eq(str(Catalog.entry(id).get("icon_file", "")), "", id)
+
+
 func test_species_metadata_is_a_valid_name_key_when_present() -> void:
 	for entry in Catalog.ENTRIES:
 		if not entry.has("species"):

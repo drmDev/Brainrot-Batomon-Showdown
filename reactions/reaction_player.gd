@@ -83,6 +83,7 @@ func _submit(id: String, text: String, species_key: String, preview: bool) -> vo
 		var texture = _icon_fn.call(species_key)
 		if texture is Texture2D:
 			request.icon_texture = texture
+			request.icon_texture_adjust = false
 	_submit_fn.call(request)
 
 
