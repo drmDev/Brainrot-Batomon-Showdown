@@ -265,7 +265,7 @@ func _make_metric_option() -> OptionButton:
 
 func _make_number_input(default_value: int) -> LineEdit:
 	var line := LineEdit.new()
-	line.focus_mode = Control.FOCUS_NONE
+	line.focus_mode = Control.FOCUS_ALL
 	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.custom_minimum_size = Vector2(0, CONTROL_HEIGHT)
 	line.text = str(default_value)
@@ -328,6 +328,15 @@ func _default_number(placeholder: String) -> int:
 		"level":
 			return 3
 		"income":
+			match selected_id():
+				Catalog.SIX_NINE:
+					return 69
+				Catalog.FOUR_TWENTY:
+					return 420
+				Catalog.SIX_SIX_SIX:
+					return 666
+				Catalog.OVER_9000:
+					return 9001
 			return 67
 		"lives":
 			return 6

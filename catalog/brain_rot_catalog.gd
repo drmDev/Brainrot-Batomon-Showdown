@@ -61,7 +61,7 @@ const ENTRIES := [
 	{
 		"kind": KIND_REACTION,
 		"id": SIX_NINE,
-		"title": "SIX NINE!",
+		"title": "NICE!",
 		"icon": "69",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -75,7 +75,7 @@ const ENTRIES := [
 	{
 		"kind": KIND_REACTION,
 		"id": SIX_SIX_SIX,
-		"title": "NUMBER OF THE BEAST!",
+		"title": "HAIL SATAN!",
 		"icon": "666",
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
@@ -302,27 +302,11 @@ static func _income_gt_match(snapshot: Dictionary, threshold: int) -> Dictionary
 
 
 static func _apes_together_match(snapshot: Dictionary) -> Dictionary:
-	var trainer = snapshot.get("trainer_id")
-	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
-		return {}
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
-			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != "monster.name.sunsage":
-				continue
-			var level = monster.get("level")
-			if typeof(level) != TYPE_INT:
-				continue
-			if int(level) >= 3:
-				return {"case": "evolved", "params": {"level": int(level)}}
-	return {}
+	return _twins_evolution_match(snapshot, "monster.name.sunsage")
 
 
-## Twins double-evolution: owns a level-3 evolved unit named by `species_key`.
+## Twins reaction: trainer is Twins and the team/bench contains the species. The
+## evolved form is the only way that species can exist for Twins, so no level check.
 static func _twins_evolution_match(snapshot: Dictionary, species_key: String) -> Dictionary:
 	var trainer = snapshot.get("trainer_id")
 	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
@@ -334,13 +318,8 @@ static func _twins_evolution_match(snapshot: Dictionary, species_key: String) ->
 		for monster in list:
 			if not monster is Dictionary:
 				continue
-			if str(monster.get("name_key", "")) != species_key:
-				continue
-			var level = monster.get("level")
-			if typeof(level) != TYPE_INT:
-				continue
-			if int(level) >= 3:
-				return {"case": "evolved", "params": {"level": int(level)}}
+			if str(monster.get("name_key", "")) == species_key:
+				return {"case": "evolved", "params": {}}
 	return {}
 
 

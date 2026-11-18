@@ -17,13 +17,13 @@ func test_render_fills_battle_placeholders() -> void:
 		"metric": "shield",
 		"value": 1234567,
 	})
-	assert_eq(text, "Cinnabark put up 1.2M shield in battle.")
+	assert_eq(text, "Cinnabark put up 1.2M shield in battle. What a good boy!")
 
 
 func test_render_fills_level_placeholder() -> void:
 	assert_eq(
-		ReactionText.render("apes_together", "evolved", {"level": 3}),
-		"Your Twins Sunsage reached level 3.",
+		ReactionText.render("apes_together", "evolved", {}),
+		"With Twins, made two Sunsages!",
 	)
 
 
@@ -50,10 +50,7 @@ func test_placeholders_reports_used_tokens() -> void:
 		ReactionText.placeholders("big_dog_best_dog", "battle"),
 		["species", "value"],
 	)
-	assert_eq(
-		ReactionText.placeholders("apes_together", "evolved"),
-		["level"],
-	)
+	assert_empty(ReactionText.placeholders("apes_together", "evolved"))
 
 
 func test_missing_case_falls_back_to_title() -> void:

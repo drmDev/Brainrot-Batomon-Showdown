@@ -20,7 +20,7 @@ func test_play_logs_rendered_line() -> void:
 	assert_eq(lines.size(), 1)
 	assert_eq(
 		str(lines[0]),
-		"Brain Rot: REACTION | six_seven | lives_wins | 7 wins with 6 lives left.",
+		"Brain Rot: REACTION | six_seven | lives_wins | 6 lives left, 7 wins.",
 	)
 
 
@@ -33,7 +33,7 @@ func test_play_all_dispatches_once_per_reaction() -> void:
 	assert_eq(lines.size(), 2)
 	assert_eq(
 		str(lines[0]),
-		"Brain Rot: REACTION | six_seven | lives_wins | 7 wins with 6 lives left.",
+		"Brain Rot: REACTION | six_seven | lives_wins | 6 lives left, 7 wins.",
 	)
 	assert_eq(str(lines[1]), "Brain Rot: REACTION | other | x | other")
 

@@ -28,16 +28,16 @@ const KNOWN_PLACEHOLDERS := ["species", "metric", "value", "level", "income", "l
 ## from here; render() warns when an id/case is missing and falls back to the title.
 const TEMPLATES := {
 	"six_seven": {
-		"lives_day_wins": "Day 7 with 7 wins and 6 lives left.",
-		"lives_day": "Day 7 with 6 lives left.",
-		"lives_wins": "7 wins with 6 lives left.",
+		"lives_day_wins": "6 lives left, 7 wins, Day 7.",
+		"lives_day": "6 lives left, Day 7.",
+		"lives_wins": "6 lives left, 7 wins.",
 		"income": "Your shop income hit exactly 67.",
 		"battle": "{species} contributed exactly 67 {metric} in battle.",
 	},
 	"six_nine": {
-		"lives_day_wins": "Day 9 with 9 wins and 6 lives left.",
-		"lives_day": "Day 9 with 6 lives left.",
-		"lives_wins": "9 wins with 6 lives left.",
+		"lives_day_wins": "6 lives left, 9 wins, Day 9.",
+		"lives_day": "6 lives left, Day 9.",
+		"lives_wins": "6 lives left, 9 wins.",
 		"income": "Your shop income hit exactly 69.",
 		"battle": "{species} contributed exactly 69 {metric} in battle.",
 	},
@@ -54,16 +54,16 @@ const TEMPLATES := {
 		"battle": "{species} hit {value} {metric} in battle.",
 	},
 	"apes_together": {
-		"evolved": "Your Twins Sunsage reached level {level}.",
+		"evolved": "With Twins, made two Sunsages!",
 	},
 	"oh_yeah": {
-		"evolved": "Your Twins Beetdown reached level {level}.",
+		"evolved": "With Twins, made two Beetdowns!",
 	},
 	"herd_u_liek_mudkipz": {
-		"evolved": "Your Twins Dewlotl reached level {level}.",
+		"evolved": "With Twins, made two Dewlotls!",
 	},
 	"big_dog_best_dog": {
-		"battle": "{species} put up {value} shield in battle.",
+		"battle": "{species} put up {value} shield in battle. What a good boy!",
 	},
 }
 

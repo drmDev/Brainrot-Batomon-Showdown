@@ -867,8 +867,8 @@ func test_apes_together_does_not_trigger_for_other_trainers() -> void:
 	assert_empty(_new_evaluator().poll(_run_with(OTHER_TRAINER, [_monster(SUNSAGE, 3)])))
 
 
-func test_apes_together_does_not_trigger_below_level3() -> void:
-	assert_empty(_new_evaluator().poll(_run_with(TWINS, [_monster(SUNSAGE, 2)])))
+func test_apes_together_triggers_regardless_of_level() -> void:
+	assert_eq(_new_evaluator().poll(_run_with(TWINS, [_monster(SUNSAGE, 2)])).size(), 1)
 
 
 func test_apes_together_triggers_for_bench_only() -> void:
@@ -917,8 +917,8 @@ func test_oh_yeah_triggers_for_twins_with_level3_beetdown() -> void:
 		_assert_run_case(earned[0], "evolved")
 
 
-func test_oh_yeah_does_not_trigger_below_level3() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 2)])))
+func test_oh_yeah_triggers_regardless_of_level() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BEETDOWN, 2)])).size(), 1)
 
 
 func test_oh_yeah_does_not_trigger_for_other_trainers() -> void:
@@ -933,8 +933,8 @@ func test_herd_u_liek_mudkipz_triggers_for_twins_with_level3_dewlotl() -> void:
 		_assert_run_case(earned[0], "evolved")
 
 
-func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
-	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
+func test_herd_u_liek_mudkipz_triggers_regardless_of_level() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])).size(), 1)
 
 
 func test_converted_reactions_fire_once_per_run() -> void:
