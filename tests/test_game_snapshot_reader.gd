@@ -46,6 +46,18 @@ func test_read_run_monster_fields() -> void:
 	assert_eq(entry.get("level"), 2)
 
 
+func test_read_run_captures_shiny_monster() -> void:
+	var run = TestHelpers.run("gentleman", 3, [TestHelpers.monster(RHIZUKA, 3, true)])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_eq(entry.get("shiny"), true)
+
+
+func test_read_run_shiny_absent_when_missing() -> void:
+	var run = TestHelpers.run("gentleman", 3, [TestHelpers.monster(RHIZUKA, 3)])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_false(entry.has("shiny"), "missing is_shiny must stay absent")
+
+
 func test_read_run_missing_keys_stay_absent() -> void:
 	var run = TestHelpers.FakeObject.new({"current_round": 3})
 	var snapshot: Dictionary = _new_reader().read_run(run)

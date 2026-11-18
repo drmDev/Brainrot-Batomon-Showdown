@@ -27,6 +27,13 @@ func test_render_fills_level_placeholder() -> void:
 	)
 
 
+func test_render_double_rainbow() -> void:
+	assert_eq(
+		ReactionText.render("double_rainbow", "owned", {}),
+		"As Twins, made double shinies!",
+	)
+
+
 func test_render_leaves_no_unfilled_braces_for_known_cases() -> void:
 	for id in ReactionText.TEMPLATES:
 		for case_name in ReactionText.TEMPLATES[id]:

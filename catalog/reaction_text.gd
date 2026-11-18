@@ -62,6 +62,9 @@ const TEMPLATES := {
 	"herd_u_liek_mudkipz": {
 		"owned": "A wizard has turned you into a mudkip. Is this awesome (Y/N)?",
 	},
+	"double_rainbow": {
+		"owned": "As Twins, made double shinies!",
+	},
 	"big_dog_best_dog": {
 		"battle": "{species} put up {value} shield in battle. What a good boy!",
 	},

@@ -941,6 +941,40 @@ func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
 	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
 
 
+func test_double_rainbow_triggers_for_twins_with_level3_shiny() -> void:
+	var earned: Array = _new_evaluator().poll(_run_with(TWINS, [
+		{"name_key": "monster.name.leafleap", "level": 3, "shiny": true},
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.DOUBLE_RAINBOW)
+		_assert_run_case(earned[0], "owned")
+
+
+func test_double_rainbow_triggers_for_any_species() -> void:
+	var earned: Array = _new_evaluator().poll(_run_with(TWINS, [
+		{"name_key": "monster.name.onsetra", "level": 3, "shiny": true},
+	]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.DOUBLE_RAINBOW)
+
+
+func test_double_rainbow_requires_twins_trainer() -> void:
+	assert_empty(_new_evaluator().poll(_run_with(OTHER_TRAINER, [
+		{"name_key": "monster.name.leafleap", "level": 3, "shiny": true},
+	])))
+
+
+func test_double_rainbow_requires_level3_shiny() -> void:
+	assert_empty(_new_evaluator().poll(_run_with(TWINS, [
+		{"name_key": "monster.name.leafleap", "level": 2, "shiny": true},
+	])))
+	assert_empty(_new_evaluator().poll(_run_with(TWINS, [
+		{"name_key": "monster.name.leafleap", "level": 3},
+	])))
+
+
 func test_converted_reactions_fire_once_per_run() -> void:
 	var evaluator = _new_evaluator()
 	var snapshot := _run_day(TWINS, 3, [_monster(BEETDOWN, 3)])

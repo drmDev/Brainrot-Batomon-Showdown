@@ -30,11 +30,15 @@ static func probe(obj, property: String) -> bool:
 
 
 ## Build a monster fake for the snapshot reader: needs `data.name_key` and `level`.
-static func monster(name_key: String, level: int = 1):
-	return FakeObject.new({
+## Set `is_shiny` true to expose the game's `is_shiny` property.
+static func monster(name_key: String, level: int = 1, is_shiny: bool = false):
+	var props := {
 		"data": FakeObject.new({"name_key": name_key}),
 		"level": level,
-	})
+	}
+	if is_shiny:
+		props["is_shiny"] = true
+	return FakeObject.new(props)
 
 
 ## Build a run fake for the snapshot reader.

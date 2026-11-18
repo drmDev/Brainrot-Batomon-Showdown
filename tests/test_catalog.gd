@@ -108,6 +108,7 @@ func test_non_monster_reactions_have_icon_textures() -> void:
 		Catalog.FOUR_TWENTY: "snoop420.png",
 		Catalog.SIX_SIX_SIX: "666.png",
 		Catalog.OVER_9000: "over9000.png",
+		Catalog.DOUBLE_RAINBOW: "dubRainbow.png",
 	}
 	for id in expected:
 		var path := "res://assets/icons/" + str(expected[id])

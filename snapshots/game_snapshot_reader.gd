@@ -24,7 +24,8 @@ extends RefCounted
 ##       "battle_units": [unit, ...],     # only when the simulation data exposes it
 ##     }
 ##
-## monster: {"name_key": String, "level": int} with each key present only when the
+## monster: {"name_key": String, "level": int, "shiny": bool} with each key present
+## only when the live monster exposes it.
 ## live monster exposes it. A null/invalid monster becomes {} so list positions are
 ## preserved (Big Dog resolves species by slot index).
 ## unit: {"team_id": int, "slot_index": int, "shield_granted": float,
@@ -164,6 +165,8 @@ func _read_monsters(monsters) -> Array:
 			var level = _read_int(monster, "level")
 			if level != null:
 				entry["level"] = level
+			if _has_prop.call(monster, "is_shiny"):
+				entry["shiny"] = bool(monster.get("is_shiny"))
 		out.append(entry)
 	return out
 

@@ -49,6 +49,7 @@ const APES_TOGETHER := "apes_together"
 const BIG_DOG := "big_dog_best_dog"
 const OH_YEAH := "oh_yeah"
 const HERD_U_LIEK_MUDKIPZ := "herd_u_liek_mudkipz"
+const DOUBLE_RAINBOW := "double_rainbow"
 
 const ENTRIES := [
 	{
@@ -122,6 +123,14 @@ const ENTRIES := [
 		"title": "HERD U LIEK MUDKIPZ!",
 		"icon": "HM",
 		"species": "monster.name.dewlotl",
+		"scopes": [SCOPE_RUN],
+	},
+	{
+		"kind": KIND_REACTION,
+		"id": DOUBLE_RAINBOW,
+		"title": "Double Rainbow!",
+		"icon_file": "dubRainbow.png",
+		"sound": {"file": "dubRainbow.ogg"},
 		"scopes": [SCOPE_RUN],
 	}
 ]
@@ -257,6 +266,8 @@ static func run_match(id: String, snapshot: Dictionary) -> Dictionary:
 			return _beetdown_match(snapshot)
 		HERD_U_LIEK_MUDKIPZ:
 			return _dewlotl_match(snapshot)
+		DOUBLE_RAINBOW:
+			return _double_rainbow_match(snapshot)
 	return {}
 
 
@@ -341,6 +352,26 @@ static func _beetdown_match(snapshot: Dictionary) -> Dictionary:
 ## HERD_U_LIEK_MUDKIPZ: owns a level-3 Dewlotl (any trainer).
 static func _dewlotl_match(snapshot: Dictionary) -> Dictionary:
 	return _has_species(snapshot, "monster.name.dewlotl", 3)
+
+
+## DOUBLE_RAINBOW: Twins owns any level-3 shiny monster.
+static func _double_rainbow_match(snapshot: Dictionary) -> Dictionary:
+	var trainer = snapshot.get("trainer_id")
+	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
+		return {}
+	for list_name in ["team", "bench"]:
+		var list = snapshot.get(list_name)
+		if not list is Array:
+			continue
+		for monster in list:
+			if not monster is Dictionary:
+				continue
+			var level = monster.get("level")
+			if typeof(level) != TYPE_INT or int(level) != 3:
+				continue
+			if bool(monster.get("shiny", false)):
+				return {"case": "owned", "params": {}}
+	return {}
 
 
 ## Team/bench contains `species_key` at `level_required` (or any level when -1).
