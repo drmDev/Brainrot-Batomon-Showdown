@@ -1,7 +1,7 @@
 {
 	"id": "brain_rot",
 	"name": "Brain Rot",
-	"version": "0.0.0.44",
+	"version": "0.99",
 	"author": "NescapePlan",
-	"description": "Fun additions for Batomon Showdown, starting with reactions"
+	"description": "Reactions and high score tracking"
 }

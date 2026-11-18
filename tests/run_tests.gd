@@ -6,6 +6,7 @@ extends SceneTree
 ## Exits 0 when all tests pass, 1 otherwise.
 
 var _test_scripts := {
+	"auto_updater": preload("test_auto_updater.gd"),
 	"battle_completion_detector": preload("test_battle_completion_detector.gd"),
 	"dev_config": preload("test_dev_config.gd"),
 	"mod_main_preview": preload("test_mod_main_preview.gd"),

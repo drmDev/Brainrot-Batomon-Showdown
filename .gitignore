@@ -10,6 +10,8 @@ Desktop.ini
 
 # misc
 plans/
+# release output (dev/package_release.ps1)
+dist/
 # dev/ is local tooling, but the curated fixtures are test data the suite depends on
 # (tests/test_fixture_replay.gd reads dev/fixtures/), so they must be tracked.
 dev/*

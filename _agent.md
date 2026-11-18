@@ -112,7 +112,8 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | File | Responsibility |
 |---|---|
 | `mod.json` | Mod identity (`brain_rot`), version, and description. |
-| `mod_main.gd` | Loader lifecycle, session log (`user://brain_rot/inspect.log`), 500 ms polling, run-transition detection, coordination of reader/evaluator/detector/capture, and toast display. |
+| `mod_main.gd` | Loader lifecycle, session log (`user://brain_rot/inspect.log`), 500 ms polling, run-transition detection, coordination of reader/evaluator/detector/capture, toast display, and self-updater setup. |
+| `core/auto_updater.gd` | GitHub self-updater (adapted from Creature Comforts): checks `update.json`, validates/downloads/compiles the release zip, and swaps files. Always on; disables itself on dev installs. |
 | `snapshots/game_snapshot_reader.gd` | The only place that reads live game objects; produces plain snapshot Dictionaries (run and battle, including derived shop `income`) with absent keys for unknown values. |
 | `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. Renders a left-aligned rounded badge (the request's icon text) beside the three text lines (header, title, description). |
 | `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, badge chrome, and toast layout metrics. |
@@ -130,16 +131,20 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `reactions/reaction_evaluator.gd` | Rules only: calls the catalog's reaction checks from snapshots and owns occurrence tracking plus the battle lowest-slot / metric-order tie-break. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear tracking. Battle rules may filter by species (Big Dog is Cinnabark-only). No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast (title from the catalog), and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `high_scores`, `memories_panel`, `catalog`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `auto_updater`, `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `high_scores`, `memories_panel`, `catalog`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |
+| `dev/asciicheck.ps1` | Verifies every shipped text file is plain ASCII (no Godot); exits non-zero on any non-ASCII byte. |
+| `dev/package_release.ps1` | Builds `dist/BrainRot-<version>.zip` and `dist/update.json` for the GitHub auto-update channel. |
+| `dev/validate_release.ps1` | Verifies a Brain Rot release locally and/or on GitHub (zip, manifest, checksums, published assets). |
 | `dev/fixtures/` | Curated/captured run and battle snapshots replayed by `test_fixture_replay.gd`. |
 
 ### Locating the gitignored dev files
 `.gitignore` has `dev/*`, so the `dev/` scripts are **gitignored but present on disk**. Tools that respect `.gitignore` (including some directory listings) will not show them, which makes them look missing. They are not missing — read or run them by path:
 
-- Read them directly, e.g. `dev/run_tests.ps1`.
+- Read them directly, e.g. `dev/run_tests.ps1`, `dev/asciicheck.ps1`,
+  `dev/package_release.ps1`, or `dev/validate_release.ps1`.
 - List them with a shell that ignores `.gitignore`:
   `cmd /c dir /a "dev"` or `powershell -NoProfile -Command "Get-ChildItem dev -Force"`.
 - Run them from the mod root as documented in **Verification** below.
@@ -177,15 +182,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\gd_checks.ps1
 
 # 2. Run the headless unit-test suite (all suites)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\run_tests.ps1
+
+# 3. Verify shipped text files are plain ASCII
+powershell -NoProfile -ExecutionPolicy Bypass -File .\dev\asciicheck.ps1
 ```
 
 - Use these scripts — do not hand-roll `godot --headless ...` commands. They are the
   canonical checks and behave identically for every contributor.
-- Both accept `-Root <path>` (defaults to the mod root) and `-Godot <exe>`
-  (defaults to the path above). Pass `-Godot` only if the binary moves.
-- Do not report a change as complete unless both scripts exit `0`. Quote the suite and
-  assertion counts from `run_tests.ps1` output, and say plainly that gameplay
+- `gd_checks.ps1` and `run_tests.ps1` accept `-Root <path>` (defaults to the mod root)
+  and `-Godot <exe>` (defaults to the path above). Pass `-Godot` only if the binary
+  moves. `asciicheck.ps1` accepts `-Paths` and `-Quiet`.
+- Do not report a change as complete unless all three scripts exit `0`. Quote the suite
+  and assertion counts from `run_tests.ps1` output, and say plainly that gameplay
   verification is still pending when it is.
+- To build and verify a release, use `.\dev\package_release.ps1` and
+  `.\dev\validate_release.ps1` (see their headers). `package_release.ps1` writes
+  `dist/` (gitignored) and must be run after the version is bumped in both `mod.json`
+  and `mod_main.gd`.
 - To re-run one test method, use the runner's filter instead of a separate script:
   `"C:\Code\Godot\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script tests\run_tests.gd -- --test=<exact_name>`
 

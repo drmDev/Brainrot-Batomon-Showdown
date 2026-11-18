@@ -14,7 +14,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "0.0.0.44"
+const VERSION := "0.99"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 # Verified in BatomonHelperBridge (reads shop_state.manager/view). The shop is the
 # start of a day, the only phase where run-scoped reactions are evaluated.
@@ -52,6 +52,9 @@ var _last_progress_signature := ""
 var _high_scores: Dictionary = {}
 var _memories_panel = null
 
+# Self-updater: checks the GitHub release manifest and swaps files (core/auto_updater.gd).
+var _updater = null
+
 # Run-scoped reaction phase gate. "shop" while the shop is active, "deferred"
 # otherwise. Only changes are logged, not every 500 ms poll.
 var _run_reaction_gate_state := ""
@@ -86,6 +89,7 @@ func _initialize_mod() -> void:
 
 	_setup_core()
 	_setup_reactions()
+	_setup_auto_updater()
 
 	# The systems are live and must run even if the log file cannot be opened;
 	# _log_message already no-ops when _log_file is null.
@@ -154,6 +158,20 @@ func _setup_reactions() -> void:
 	var ReactionPlayer = load(base_dir.path_join("reactions/reaction_player.gd"))
 	var icon_fn: Callable = _species_icons.icon_for if _species_icons != null else Callable()
 	_reaction_player = ReactionPlayer.new(_print_notice, _submit_notification, _play_reaction_sound, icon_fn)
+
+
+## Self-updater: checks the GitHub release manifest and swaps files (core/auto_updater.gd).
+## Brain Rot has no settings, so auto-update is always on; the updater disables itself on a
+## developer install (a folder with .git or dev/run_tests.ps1).
+func _setup_auto_updater() -> void:
+	var AutoUpdater = load(MOD_BASE_DIR.path_join("core/auto_updater.gd"))
+	if AutoUpdater == null:
+		return
+	_updater = AutoUpdater.new()
+	_updater.name = "AutoUpdater"
+	add_child(_updater)
+	_updater.setup(VERSION, get_script().resource_path.get_base_dir(), true)
+	_updater.start()
 
 
 ## Play the extra audio for a reaction, if the table has one.
