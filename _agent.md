@@ -52,6 +52,21 @@ $log = "$env:APPDATA\Godot\app_userdata\Batomon Showdown\brain_rot\inspect.log"
 Get-Content $log -Wait -Tail 50
 ```
 
+## Persistence
+High scores live in `user://brain_rot/high_scores.json` (Windows:
+`%APPDATA%\Godot\app_userdata\Batomon Showdown\brain_rot\high_scores.json`).
+The store is `{"version": 1, "metrics": {"damage": {"value": int, "unit": String}, ...}}`
+and records the best single-unit value per battle metric for the player's team,
+plus the unit that set it. It is global across runs, updated once per completed
+battle, and written only when a metric improves. The Brain Rot Memories shop
+panel reads the same store.
+
+## Shop HUD
+The rainbow brain button in the shop opens the Brain Rot Memories panel. It is
+positioned to the left of Creature Comforts' Replay Battle button position
+(RIGHT_RATIO 0.80, TOP_RATIO 0.05). Close it with the X box, by clicking outside
+the popup, or with Escape.
+
 ## UI Sizing and Theme Overrides
 Godot's default control theme is sized for menus, not the mod's compact toast/HUD
 scale. Native `Label`, `Button`, and `OptionButton` controls render with large
@@ -102,15 +117,20 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/toast_view.gd` | Bottom-right toast view; the notification host owns placement and timing. Renders a left-aligned rounded badge (the request's icon text) beside the three text lines (header, title, description). |
 | `hud/styles.gd` | Shared palette, font, panel chrome, compact-button chrome, badge chrome, and toast layout metrics. |
 | `hud/toast_preview_panel.gd` | Dev-only preview button/panel: compact dropdown of registered toasts, Play, and Close. |
+| `hud/panel_icons.gd` | Shared loader/drawer for loose mod icons (close box). |
+| `hud/shop_modal_panel.gd` | Shared shop icon-button modal scaffolding (button, frame, close box, click-outside/Escape close). |
+| `hud/table_modal_panel.gd` | Shared row-table layout for shop modals. |
+| `hud/memories_panel.gd` | The shop's Brain Rot Memories high-score modal (rainbow brain button). |
 | `notifications/toast_catalog.gd` | Builds preview entries from `catalog/brain_rot_catalog.gd` and duplicate-allowed requests; titles and descriptions come from the catalog. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
 | `audio/reaction_sounds.gd` | Reaction audio derived from each catalog entry's `sound` block; lazy per-file players. |
 | `battle/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
+| `battle/high_scores.gd` | Persistent per-metric best single-unit battle values (`user://brain_rot/high_scores.json`); pure parse/serialize/record helpers plus display formatting. |
 | `catalog/brain_rot_catalog.gd` | The single source of truth for reactions: `ENTRIES` (kind, id, title, description, optional icon, scopes), one typed check function per reaction scope, and the battle metric map. No condition DSL. Adding an entry is one metadata row plus one check function. `icon_for(id)` returns the entry's explicit icon or a value derived from the id. |
 | `reactions/reaction_evaluator.gd` | Rules only: calls the catalog's reaction checks from snapshots and owns occurrence tracking plus the battle lowest-slot / metric-order tie-break. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear tracking. Battle rules may filter by species (Big Dog is Cinnabark-only). No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction: logs `Brain Rot: REACTION \| <id> \| <detail>` to console and `inspect.log`, submits a toast (title from the catalog), and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `catalog`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `high_scores`, `memories_panel`, `catalog`, `reaction_evaluator`, `reaction_player`, `toast_catalog`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |

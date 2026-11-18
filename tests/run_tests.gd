@@ -15,6 +15,8 @@ var _test_scripts := {
 	"fixture_replay": preload("test_fixture_replay.gd"),
 	"game_snapshot_reader": preload("test_game_snapshot_reader.gd"),
 	"state_capture": preload("test_state_capture.gd"),
+	"high_scores": preload("test_high_scores.gd"),
+	"memories_panel": preload("test_memories_panel.gd"),
 	"catalog": preload("test_catalog.gd"),
 	"reaction_evaluator": preload("test_reaction_evaluator.gd"),
 	"reaction_player": preload("test_reaction_player.gd"),

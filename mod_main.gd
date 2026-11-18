@@ -48,6 +48,10 @@ var _reaction_sounds = null
 var _species_icons = null
 var _last_progress_signature := ""
 
+# Persistent per-metric high scores and the shop's Brain Rot Memories panel.
+var _high_scores: Dictionary = {}
+var _memories_panel = null
+
 # Run-scoped reaction phase gate. "shop" while the shop is active, "deferred"
 # otherwise. Only changes are logged, not every 500 ms poll.
 var _run_reaction_gate_state := ""
@@ -103,6 +107,10 @@ func _setup_core() -> void:
 	var StateCapture = load(base_dir.path_join("debug/state_capture.gd"))
 	_state_capture = StateCapture.new()
 
+	var HighScores = load(base_dir.path_join("battle/high_scores.gd"))
+	if HighScores != null:
+		_high_scores = HighScores.load_store()
+
 	# Dedicated layer so toasts can appear over the battle results screen.
 	_toast_layer = CanvasLayer.new()
 	_toast_layer.layer = 100
@@ -115,6 +123,13 @@ func _setup_core() -> void:
 	_notification_host = NotificationHost.new(NotificationManager.new(), _toast_layer)
 	_notification_host.name = "NotificationHost"
 	_toast_layer.add_child(_notification_host)
+
+	# Shop button that opens the Brain Rot Memories high-score panel.
+	var MemoriesPanel = load(base_dir.path_join("hud/memories_panel.gd"))
+	if MemoriesPanel != null:
+		_memories_panel = MemoriesPanel.new()
+		_memories_panel.name = "MemoriesPanel"
+		_toast_layer.add_child(_memories_panel)
 
 
 func _setup_reactions() -> void:
@@ -285,6 +300,7 @@ func _inspect_current_phase() -> void:
 			if usable:
 				_battle_completion.consume()
 				_log_battle_units(battle_snapshot)
+				_record_high_scores(battle_snapshot)
 				_poll_battle_reactions(battle_snapshot)
 	elif _was_battle:
 		# Reset battle-scoped tracking only when actually leaving the battle phase.
@@ -292,6 +308,7 @@ func _inspect_current_phase() -> void:
 			_battle_completion.reset()
 
 	_was_battle = is_battle
+	_update_memories_panel(is_shop)
 	_maybe_capture(battle_snapshot if is_battle else run_snapshot)
 
 
@@ -331,6 +348,40 @@ func _poll_battle_reactions(battle_snapshot: Dictionary) -> void:
 	var triggered: Array = _reaction_evaluator.poll_battle(battle_snapshot)
 	_log_event("REACTION BATTLE | %d triggered" % triggered.size())
 	_reaction_player.play_all(triggered)
+
+
+## Record persistent per-metric high scores from a completed battle snapshot.
+## Saves only when a metric improves and logs each new record.
+func _record_high_scores(battle_snapshot: Dictionary) -> void:
+	if _high_scores.is_empty():
+		return
+	var HighScores = load(MOD_BASE_DIR.path_join("battle/high_scores.gd"))
+	if HighScores == null:
+		return
+	var improved: Dictionary = HighScores.record_battle(_high_scores, battle_snapshot)
+	if improved.is_empty():
+		return
+	HighScores.save_store(_high_scores)
+	for metric in improved:
+		var row: Dictionary = improved[metric]
+		_log_event("HIGH SCORE | %s %d by %s (was %d)" % [
+			str(metric),
+			int(row.get("value", 0)),
+			HighScores.format_unit(str(row.get("unit", ""))),
+			int(row.get("previous", 0)),
+		])
+
+
+## Show the Brain Rot Memories button only while the shop is active, and keep
+## its table in sync with the current high-score store.
+func _update_memories_panel(is_shop: bool) -> void:
+	if _memories_panel == null:
+		return
+	if is_shop:
+		_memories_panel.set_scores(_high_scores)
+		_memories_panel.show_button()
+	else:
+		_memories_panel.hide_panel()
 
 
 ## The player's run during battle: the replay copy when the battle state exposes it,
