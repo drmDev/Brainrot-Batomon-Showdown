@@ -32,20 +32,6 @@ func test_entries_include_every_registered_reaction_once() -> void:
 	assert_eq(reactions.size(), expected_ids.size(), "reaction ids must not duplicate")
 
 
-func test_seven_or_more_lives_preview_uses_committed_totals() -> void:
-	var entries := ToastCatalog.entries()
-	var found := ToastCatalog.find(
-		entries,
-		NotificationRequest.KIND_REACTION,
-		Catalog.SEVEN_OR_MORE_LIVES,
-	)
-	assert_false(found.is_empty(), "7_or_more_lives must be in the catalog")
-	assert_eq(str(found.get("title", "")), "YOU LOOK GREAT TODAY!")
-	assert_eq(
-		str(found.get("description", "")),
-		Catalog.describe_entry(Catalog.entry(Catalog.SEVEN_OR_MORE_LIVES)),
-	)
-
 
 func test_every_entry_has_a_non_empty_label_and_title() -> void:
 	for entry in ToastCatalog.entries():

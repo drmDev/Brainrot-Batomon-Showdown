@@ -52,13 +52,6 @@ func test_preview_over_9000_plays_sound_and_submits_toast() -> void:
 	result["mod"].free()
 
 
-func test_preview_seven_or_more_lives_plays_fanfare_and_submits_toast() -> void:
-	var result = _preview(Catalog.SEVEN_OR_MORE_LIVES)
-	assert_false(result["entry"].is_empty(), "7_or_more_lives must be in the catalog")
-	assert_eq(result["sounds"].played, [Catalog.SEVEN_OR_MORE_LIVES])
-	assert_eq(result["mod"]._notification_host.submitted.size(), 1)
-	result["mod"].free()
-
 
 func test_preview_other_reaction_stays_silent_but_submits_toast() -> void:
 	var result = _preview(Catalog.SIX_SEVEN)
@@ -73,10 +66,9 @@ func test_reaction_sound_mapping_is_table_driven() -> void:
 	var sounds = FakeSoundRegistry.new()
 	mod._reaction_sounds = sounds
 	mod._play_reaction_sound(Catalog.OVER_9000)
-	mod._play_reaction_sound(Catalog.SEVEN_OR_MORE_LIVES)
 	mod._play_reaction_sound(Catalog.SIX_NINE)
 	assert_eq(
 		sounds.played,
-		[Catalog.OVER_9000, Catalog.SEVEN_OR_MORE_LIVES],
+		[Catalog.OVER_9000],
 	)
 	mod.free()

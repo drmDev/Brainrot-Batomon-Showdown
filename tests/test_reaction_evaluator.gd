@@ -13,7 +13,6 @@ const SIX_NINE := Catalog.SIX_NINE
 const FOUR_TWENTY := Catalog.FOUR_TWENTY
 const SIX_SIX_SIX := Catalog.SIX_SIX_SIX
 const OVER_9000 := Catalog.OVER_9000
-const SEVEN_OR_MORE_LIVES := Catalog.SEVEN_OR_MORE_LIVES
 const APES_TOGETHER := Catalog.APES_TOGETHER
 const BIG_DOG := Catalog.BIG_DOG
 
@@ -884,116 +883,6 @@ func test_big_dog_coexists_with_other_battle_reactions() -> void:
 	assert_true(ids.has(BIG_DOG))
 
 
-# --- 10. 7_or_more_lives: committed post-battle wins/lives ---
-
-func _battle_outcome(
-	wins,
-	lives,
-	battle_over: bool = true,
-	units: Array = [],
-	team: Array = []
-) -> Dictionary:
-	return {
-		"kind": "battle",
-		"team": team,
-		"battle_units": units,
-		"battle_over": battle_over,
-		"outcome": {"wins": wins, "lives": lives},
-	}
-
-
-func test_seven_or_more_lives_triggers_at_ten_wins_and_ten_lives() -> void:
-	var evaluator = _new_evaluator()
-	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 10))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("id", "")), SEVEN_OR_MORE_LIVES)
-		assert_eq(str(earned[0].get("detail", "")), "Wins 10, Lives 10")
-	assert_eq(evaluator.occurrence_count(SEVEN_OR_MORE_LIVES), 1)
-
-
-func test_seven_or_more_lives_triggers_at_seven_lives() -> void:
-	var evaluator = _new_evaluator()
-	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 7))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("id", "")), SEVEN_OR_MORE_LIVES)
-		assert_eq(str(earned[0].get("detail", "")), "Wins 10, Lives 7")
-
-
-func test_seven_or_more_lives_near_misses_do_not_trigger() -> void:
-	for pair in [[9, 10], [11, 10], [10, 6]]:
-		assert_empty(
-			_new_evaluator().poll_battle(_battle_outcome(pair[0], pair[1])),
-			"%d/%d" % [pair[0], pair[1]]
-		)
-
-
-func test_seven_or_more_lives_requires_a_valid_committed_outcome() -> void:
-	assert_empty(_new_evaluator().poll_battle(_battle([], [], true)))
-	for outcome in [
-		{"wins": "10", "lives": 10},
-		{"wins": 10, "lives": "10"},
-		{"wins": 10.0, "lives": 10},
-		{"wins": 10, "lives": null},
-		{"wins": true, "lives": 10},
-	]:
-		var snapshot := _battle([], [], true)
-		snapshot["outcome"] = outcome
-		assert_empty(_new_evaluator().poll_battle(snapshot), str(outcome))
-
-
-func test_seven_or_more_lives_only_evaluated_at_battle_over() -> void:
-	assert_empty(_new_evaluator().poll_battle(_battle_outcome(10, 10, false)))
-	var snapshot := _battle_outcome(10, 10)
-	snapshot.erase("battle_over")
-	assert_empty(_new_evaluator().poll_battle(snapshot))
-
-
-func test_seven_or_more_lives_is_once_per_run_not_per_battle() -> void:
-	var evaluator = _new_evaluator()
-	var snapshot := _battle_outcome(10, 10)
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-	assert_empty(evaluator.poll_battle(snapshot))
-	evaluator.reset_battle()
-	assert_empty(evaluator.poll_battle(snapshot), "reset_battle must not re-arm a run occurrence")
-	evaluator.reset_run()
-	assert_eq(evaluator.poll_battle(snapshot).size(), 1)
-
-
-func test_seven_or_more_lives_does_not_require_battle_units() -> void:
-	var snapshot := _battle_outcome(10, 10)
-	snapshot.erase("battle_units")
-	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
-	snapshot["battle_units"] = "not-an-array"
-	assert_eq(_new_evaluator().poll_battle(snapshot).size(), 1)
-
-
-func test_seven_or_more_lives_does_not_trigger_on_run_snapshot() -> void:
-	assert_empty(_new_evaluator().poll({
-		"kind": "run",
-		"lives": 10,
-		"current_wins": 10,
-		"current_round": 10,
-	}))
-
-
-func test_seven_or_more_lives_coexists_with_unit_reactions() -> void:
-	var earned: Array = _new_evaluator().poll_battle(_battle_outcome(
-		10, 10, true, [_unit(0, {"damage_dealt": 67})], _team_one()
-	))
-	var ids := _ids(earned)
-	assert_true(ids.has(SIX_SEVEN))
-	assert_true(ids.has(SEVEN_OR_MORE_LIVES))
-
-
-func test_registered_rows_include_the_outcome_scope() -> void:
-	var found := false
-	for entry in ReactionEvaluator.registered_rows():
-		if str(entry["scope"]) == ReactionEvaluator.SCOPE_OUTCOME and str(entry["row"].get("id", "")) == SEVEN_OR_MORE_LIVES:
-			found = true
-	assert_true(found)
-
 
 # --- 11. apes_together: Twins with a fielded level-3 Sunsage ---
 
@@ -1139,9 +1028,3 @@ func test_non_monster_run_reaction_has_empty_species_key() -> void:
 		assert_eq(str(earned[0].get("species_key", "")), "")
 
 
-func test_outcome_reaction_has_empty_species_key() -> void:
-	var evaluator = _new_evaluator()
-	var earned: Array = evaluator.poll_battle(_battle_outcome(10, 10))
-	assert_eq(earned.size(), 1)
-	if earned.size() == 1:
-		assert_eq(str(earned[0].get("species_key", "")), "")

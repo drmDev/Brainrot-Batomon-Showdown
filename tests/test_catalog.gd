@@ -114,7 +114,6 @@ func test_explicit_icon_wins_over_derived() -> void:
 	assert_eq(Catalog.icon_for(Catalog.SIX_SEVEN), "67")
 	assert_eq(Catalog.icon_for(Catalog.FOUR_TWENTY), "420")
 	assert_eq(Catalog.icon_for(Catalog.OVER_9000), "9000")
-	assert_eq(Catalog.icon_for(Catalog.SEVEN_OR_MORE_LIVES), "7+")
 
 
 func test_icon_derivation_from_unknown_ids() -> void:

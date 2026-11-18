@@ -48,7 +48,6 @@ const SIX_NINE := "six_nine"
 const FOUR_TWENTY := "four_twenty"
 const SIX_SIX_SIX := "six_six_six"
 const OVER_9000 := "over_9000"
-const SEVEN_OR_MORE_LIVES := "7_or_more_lives"
 const APES_TOGETHER := "apes_together"
 const BIG_DOG := "big_dog_best_dog"
 const OH_YEAH := "oh_yeah"
@@ -95,15 +94,6 @@ const ENTRIES := [
 		"icon": "9000",
 		"sound": {"file": "over-9000.ogg"},
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
-	},
-	{
-		"kind": KIND_REACTION,
-		"id": SEVEN_OR_MORE_LIVES,
-		"title": "YOU LOOK GREAT TODAY!",
-		"description": "10 wins with 7+ lives at the end of a battle",
-		"icon": "7+",
-		"sound": {"file": "ff_fanfare.ogg"},
-		"scopes": [SCOPE_OUTCOME],
 	},
 	{
 		"kind": KIND_REACTION,
@@ -282,10 +272,8 @@ static func battle_rule(id: String) -> Dictionary:
 
 
 ## Detail line for an outcome-scoped reaction, or "" when it does not match.
-static func outcome_detail(id: String, outcome: Dictionary) -> String:
-	match id:
-		SEVEN_OR_MORE_LIVES:
-			return _seven_or_more_lives_detail(outcome)
+## No outcome-scoped reactions are currently registered.
+static func outcome_detail(_id: String, _outcome: Dictionary) -> String:
 	return ""
 
 
@@ -383,17 +371,6 @@ static func _twins_evolution_detail(snapshot: Dictionary, species_key: String, d
 			if int(level) >= 3:
 				return "Trainer twins, %s level %d" % [display_name, int(level)]
 	return ""
-
-
-
-static func _seven_or_more_lives_detail(outcome: Dictionary) -> String:
-	var wins = _int(outcome, "wins")
-	var lives = _int(outcome, "lives")
-	if wins == null or lives == null:
-		return ""
-	if int(wins) != 10 or int(lives) < 7:
-		return ""
-	return "Wins %d, Lives %d" % [int(wins), int(lives)]
 
 
 ## Integer value of a snapshot key, or null when missing/non-int.

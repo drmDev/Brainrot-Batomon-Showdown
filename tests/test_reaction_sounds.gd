@@ -27,10 +27,6 @@ func test_expected_sounds_are_mapped() -> void:
 		ReactionSounds.REACTION_SOUNDS[Catalog.OVER_9000]["file"],
 		"over-9000.ogg",
 	)
-	assert_eq(
-		ReactionSounds.REACTION_SOUNDS[Catalog.SEVEN_OR_MORE_LIVES]["file"],
-		"ff_fanfare.ogg",
-	)
 
 
 func test_every_sound_file_exists_and_loads() -> void:
