@@ -9,24 +9,6 @@ func _panel():
 	return MemoriesPanel.new()
 
 
-func test_button_texture_loads() -> void:
-	var panel = _panel()
-	assert_true(panel.button_texture() is Texture2D, "rainbowBrain.png should load")
-	panel.free()
-
-
-func test_button_position_is_left_of_replay_button() -> void:
-	var panel = _panel()
-	var viewport := Vector2(1280, 720)
-	var pos: Vector2 = panel._button_position(viewport)
-	var replay_half := 10.0
-	var replay_x := roundf(viewport.x * 0.80 - replay_half)
-	var replay_y := roundf(viewport.y * 0.05 - replay_half)
-	assert_true(pos.x < replay_x, "memories button must be left of the Replay button")
-	assert_eq(pos.y, replay_y)
-	panel.free()
-
-
 func test_popup_title_is_brain_rot_memories() -> void:
 	var panel = _panel()
 	assert_eq(panel._popup_title(), "Brain Rot Memories")
@@ -66,18 +48,11 @@ func test_cell_text_shows_dash_when_missing() -> void:
 func test_open_and_close_toggle() -> void:
 	var panel = _panel()
 	assert_false(panel.is_open())
+	assert_false(panel.visible)
 	panel.open_panel()
 	assert_true(panel.is_open())
+	assert_true(panel.visible)
 	panel.close_panel()
 	assert_false(panel.is_open())
-	panel.free()
-
-
-func test_show_button_and_hide_panel_toggle_visibility() -> void:
-	var panel = _panel()
-	assert_false(panel.visible)
-	panel.show_button()
-	assert_true(panel.visible)
-	panel.hide_panel()
 	assert_false(panel.visible)
 	panel.free()

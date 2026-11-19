@@ -11,11 +11,6 @@ const HighScores = preload("../battle/high_scores.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const SpeciesIcons = preload("../catalog/species_icons.gd")
 
-const REPLAY_RIGHT_RATIO := 0.80
-const REPLAY_TOP_RATIO := 0.05
-const REPLAY_BUTTON_SIZE := 20.0
-const GAP := 4.0
-
 const UNIT_ICON_SIZE := 12.0
 const UNIT_ICON_GAP := 3.0
 
@@ -33,24 +28,8 @@ func set_scores(store: Dictionary) -> void:
 	queue_redraw()
 
 
-func _button_texture_path() -> String:
-	return "../assets/icons/rainbowBrain.png"
-
-
-func _button_position(viewport_size: Vector2) -> Vector2:
-	var size := _button_size()
-	var replay_half := REPLAY_BUTTON_SIZE * 0.5
-	var replay_x := roundf(viewport_size.x * REPLAY_RIGHT_RATIO - replay_half)
-	var replay_y := roundf(viewport_size.y * REPLAY_TOP_RATIO - replay_half)
-	return Vector2(replay_x - size - GAP, replay_y)
-
-
 func _popup_title() -> String:
 	return "Brain Rot Memories"
-
-
-func _log_label() -> String:
-	return "MEMORIES"
 
 
 func _table_row_count() -> int:

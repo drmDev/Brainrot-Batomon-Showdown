@@ -20,6 +20,7 @@ const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 # start of a day, the only phase where run-scoped reactions are evaluated.
 const SHOP_SCRIPT := "res://game/states/shop_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
+const BRAIN_ICON_FILE := "assets/icons/rainbowBrain.png"
 
 # Mod Volume slider (make_custom_settings_menu_entries). The loader draws declared
 # settings as a stepper, so volume is a custom HSlider persisted by core/mod_config.gd.
@@ -63,6 +64,8 @@ var _last_shop_snapshot: Dictionary = {}
 # Persistent per-metric high scores and the shop's Brain Rot Memories panel.
 var _high_scores: Dictionary = {}
 var _memories_panel = null
+var _shop_brain_button = null
+var _shop_brain_button_host_id := 0
 
 # Self-updater: checks the GitHub release manifest and swaps files (core/auto_updater.gd).
 var _updater = null
@@ -422,7 +425,7 @@ func _inspect_current_phase() -> void:
 			_battle_completion.reset()
 
 	_was_battle = is_battle
-	_update_memories_panel(is_shop)
+	_update_memories_panel(is_shop, state)
 	_maybe_capture(battle_snapshot if is_battle else run_snapshot)
 
 
@@ -491,15 +494,126 @@ func _record_high_scores(battle_snapshot: Dictionary) -> void:
 
 
 ## Show the Brain Rot Memories button only while the shop is active, and keep
-## its table in sync with the current high-score store.
-func _update_memories_panel(is_shop: bool) -> void:
+## its table in sync with the current high-score store. The button is attached
+## to the game's own top-right HudButtons bar so the game handles its layout.
+func _update_memories_panel(is_shop: bool, state) -> void:
 	if _memories_panel == null:
 		return
 	if is_shop:
 		_memories_panel.set_scores(_high_scores)
-		_memories_panel.show_button()
+		_sync_shop_brain_button(state)
 	else:
+		_detach_shop_brain_button()
 		_memories_panel.hide_panel()
+
+
+## Attach the rainbow-brain button to the game's HudButtons bar. Re-attaches when
+## the shop view is recreated (new instance id). The button opens the Memories
+## popup; the game's own bar handles its layout and show/hide.
+##
+## Multi-mod safety: the button is inserted at a deterministic index among any
+## other mod buttons (sorted by node name) rather than always at index 0, and the
+## bar's left edge is recomputed from all children instead of being decremented,
+## so several mods can extend the bar without clobbering each other.
+func _sync_shop_brain_button(state) -> void:
+	var view = state.get("view") if _has_property(state, "view") else null
+	if not is_instance_valid(view):
+		_log_event("MEMORIES BUTTON | no shop view")
+		_detach_shop_brain_button()
+		return
+	var hud_buttons = view.get_node_or_null("HudButtons")
+	if hud_buttons == null:
+		_log_event("MEMORIES BUTTON | no HudButtons node")
+		_detach_shop_brain_button()
+		return
+	var host_id: int = hud_buttons.get_instance_id()
+	if _shop_brain_button != null and is_instance_valid(_shop_brain_button) and _shop_brain_button_host_id == host_id:
+		return
+	_detach_shop_brain_button()
+	_shop_brain_button = _make_brain_button()
+	if _shop_brain_button == null:
+		_log_event("MEMORIES BUTTON | button creation failed")
+		return
+	hud_buttons.add_child(_shop_brain_button)
+	_insert_brain_button(hud_buttons)
+	_shop_brain_button_host_id = host_id
+	_widen_hud_buttons(hud_buttons)
+	_log_event("MEMORIES BUTTON | attached (visible=%s)" % str(_shop_brain_button.visible))
+
+
+## Place the brain button among the bar's children in a stable, name-sorted order
+## so multiple mods' buttons do not fight over the leftmost slot.
+func _insert_brain_button(hud_buttons) -> void:
+	var target := str(_shop_brain_button.name)
+	var index := 0
+	for i in range(hud_buttons.get_child_count()):
+		var child = hud_buttons.get_child(i)
+		if child == _shop_brain_button:
+			continue
+		if str(child.name) < target:
+			index = i + 1
+	hud_buttons.move_child(_shop_brain_button, index)
+
+
+## Recompute the bar's left edge from the total width of its children so the
+## game's buttons keep their positions while mod buttons extend the bar leftward.
+## Idempotent: repeated calls produce the same result.
+func _widen_hud_buttons(hud_buttons) -> void:
+	var separation: int = hud_buttons.get_theme_constant("separation")
+	var total := 0.0
+	for i in range(hud_buttons.get_child_count()):
+		var child = hud_buttons.get_child(i)
+		if child is Control:
+			total += child.get_combined_minimum_size().x
+		if i > 0:
+			total += separation
+	# The bar is right-anchored; keep its right edge fixed and extend leftward.
+	hud_buttons.offset_left = hud_buttons.offset_right - total
+
+
+## Build the small rounded brain button that opens the Memories popup.
+func _make_brain_button():
+	var Styles = load(MOD_BASE_DIR.path_join("hud/styles.gd"))
+	var button := Button.new()
+	button.name = "BrainRotButton"
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(24, 24)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.expand_icon = true
+	var icon := _load_brain_icon()
+	if icon != null:
+		button.icon = icon
+	else:
+		_log_event("MEMORIES BUTTON | brain icon failed to load")
+	if Styles != null:
+		var style: StyleBoxFlat = Styles.make_compact_button_style()
+		style.set_content_margin_all(3)
+		for state in ["normal", "hover", "pressed", "focus"]:
+			button.add_theme_stylebox_override(state, style)
+	button.pressed.connect(_on_brain_button_pressed)
+	return button
+
+
+## Load the loose rainbowBrain.png icon (not imported by the game).
+func _load_brain_icon() -> Texture2D:
+	var path := MOD_BASE_DIR.path_join(BRAIN_ICON_FILE)
+	var image := Image.load_from_file(path)
+	if image == null:
+		_log_event("MEMORIES BUTTON | cannot load icon: %s" % path)
+		return null
+	return ImageTexture.create_from_image(image)
+
+
+func _on_brain_button_pressed() -> void:
+	if _memories_panel != null:
+		_memories_panel.open_panel()
+
+
+func _detach_shop_brain_button() -> void:
+	if _shop_brain_button != null and is_instance_valid(_shop_brain_button):
+		_shop_brain_button.free()
+	_shop_brain_button = null
+	_shop_brain_button_host_id = 0
 
 
 ## The player's run during battle: the replay copy when the battle state exposes it,

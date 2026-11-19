@@ -1,15 +1,12 @@
 extends Control
 ## ShopModalPanel - shared scaffolding for the shop's small icon-button modals.
 ##
-## Owns the button, modal frame, close box, viewport anchoring, and input.
-## Subclasses provide the button texture/size/position, popup title and height,
-## and the popup content.
+## Owns the modal frame, close box, viewport anchoring, and input. Subclasses
+## provide the popup title and height, and the popup content. The button that
+## opens the modal is owned by the game's HUD (see mod_main), not by this panel.
 ##
 ## Adapted from Creature Comforts (hud/shop_modal_panel.gd and
 ## hud/comfort_panel.gd), restyled with Brain Rot's hud/styles.gd palette.
-
-signal log_line(message: String)
-signal popup_visibility_changed(open: bool)
 
 const Styles = preload("styles.gd")
 const PanelIcons = preload("panel_icons.gd")
@@ -32,12 +29,9 @@ const DESCRIPTION_COLOR := Styles.DESCRIPTION_COLOR
 const DIM_COLOR := Color(0.0, 0.0, 0.0, 0.5)
 
 var _popup_open := false
-var _button_screen_pos := Vector2.ZERO
 
 var _text_font: Font
-var _button_texture: Texture2D = null
 var _close_texture: Texture2D = null
-var _button_style: StyleBoxFlat
 var _popup_style: StyleBoxFlat
 var _header_style: StyleBoxFlat
 
@@ -48,9 +42,7 @@ func _init() -> void:
 	visible = false
 	_setup_styles()
 	_text_font = Styles.make_font()
-	_button_texture = _load_texture(_button_texture_path())
 	_close_texture = PanelIcons.load_icon(str(get_script().resource_path), PanelIcons.CLOSE)
-	size = Vector2(_button_size(), _button_size())
 
 
 func _ready() -> void:
@@ -59,18 +51,6 @@ func _ready() -> void:
 
 
 # --- Subclass hooks ---------------------------------------------------------
-
-func _button_size() -> float:
-	return 20.0
-
-
-func _button_texture_path() -> String:
-	return ""
-
-
-func _button_position(_viewport_size: Vector2) -> Vector2:
-	return Vector2.ZERO
-
 
 func _popup_title() -> String:
 	return ""
@@ -84,48 +64,10 @@ func _draw_content(_rect: Rect2) -> void:
 	pass
 
 
-func _log_label() -> String:
-	return ""
-
-
-func _log_detail() -> String:
-	return ""
-
-
-func _emit_log(detail: String) -> void:
-	var label := _log_label()
-	if label.is_empty():
-		return
-	var message := "%s | %s" % [label, detail]
-	var extra := _log_detail()
-	if not extra.is_empty():
-		message += " | %s" % extra
-	log_line.emit(message)
-
-
-func _on_button_pressed() -> void:
-	_open_popup()
-
-
 # --- Public lifecycle (mod_main and tests) ----------------------------------
 
-func show_button() -> void:
-	_ensure_visible()
-
-
 func hide_panel() -> void:
-	if _popup_open:
-		_close_popup()
-	if not visible:
-		return
-	visible = false
-	_emit_log("button hidden")
-	queue_redraw()
-
-
-func reset_for_shop() -> void:
-	if _popup_open:
-		_close_popup()
+	_close_popup()
 
 
 func open_panel() -> void:
@@ -140,23 +82,9 @@ func is_open() -> bool:
 	return _popup_open
 
 
-func button_texture() -> Texture2D:
-	return _button_texture
-
-
 # --- Lifecycle --------------------------------------------------------------
 
-func _ensure_visible() -> void:
-	if not visible:
-		visible = true
-		_anchor()
-		_emit_log("button created")
-	queue_redraw()
-
-
 func _setup_styles() -> void:
-	_button_style = Styles.make_panel_style()
-
 	_popup_style = StyleBoxFlat.new()
 	_popup_style.bg_color = BG_COLOR
 	_popup_style.border_color = BORDER_COLOR
@@ -172,13 +100,8 @@ func _setup_styles() -> void:
 
 func _anchor() -> void:
 	var viewport_size := _viewport_size()
-	_button_screen_pos = _button_position(viewport_size)
-	if _popup_open:
-		position = Vector2.ZERO
-		size = viewport_size
-	else:
-		position = _button_screen_pos
-		size = Vector2(_button_size(), _button_size())
+	position = Vector2.ZERO
+	size = viewport_size
 	queue_redraw()
 
 
@@ -195,11 +118,10 @@ func _open_popup() -> void:
 	if _popup_open:
 		return
 	_popup_open = true
+	visible = true
 	_anchor()
 	if is_inside_tree():
 		grab_focus()
-	_emit_log("popup opened")
-	popup_visibility_changed.emit(true)
 	queue_redraw()
 
 
@@ -207,20 +129,11 @@ func _close_popup() -> void:
 	if not _popup_open:
 		return
 	_popup_open = false
-	_anchor()
-	_emit_log("popup closed")
-	popup_visibility_changed.emit(false)
+	visible = false
 	queue_redraw()
 
 
 # --- Layout -----------------------------------------------------------------
-
-func _button_rect() -> Rect2:
-	var button_size := Vector2(_button_size(), _button_size())
-	if _popup_open:
-		return Rect2(_button_screen_pos, button_size)
-	return Rect2(Vector2.ZERO, button_size)
-
 
 func _popup_rect() -> Rect2:
 	var viewport_size := _viewport_size()
@@ -246,17 +159,6 @@ func _draw() -> void:
 		return
 	if _popup_open:
 		_draw_popup()
-	_draw_button()
-
-
-func _draw_button() -> void:
-	var r := _button_rect()
-	_button_style.draw(get_canvas_item(), r)
-	if _button_texture != null:
-		var pad := 2.0
-		PanelIcons.draw_fit(self, _button_texture, Rect2(r.position + Vector2(pad, pad), r.size - Vector2(pad * 2.0, pad * 2.0)))
-	else:
-		_draw_text_shadow(r.position + Vector2(0.0, r.size.y - 6.0), "?", TITLE_COLOR, 10, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 
 
 func _draw_popup() -> void:
@@ -289,9 +191,6 @@ func _gui_input(event) -> void:
 			elif not _popup_rect().has_point(event.position):
 				_close_popup()
 			accept_event()
-		elif _button_rect().has_point(event.position):
-			_on_button_pressed()
-			accept_event()
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and _popup_open:
 		_close_popup()
 		accept_event()
@@ -304,17 +203,6 @@ func _unhandled_input(event) -> void:
 
 
 # --- Helpers ----------------------------------------------------------------
-
-func _load_texture(relative_path: String) -> Texture2D:
-	if relative_path.is_empty():
-		return null
-	var base_dir := str(get_script().resource_path).get_base_dir()
-	var path := base_dir.path_join(relative_path)
-	var image := Image.load_from_file(path)
-	if image == null:
-		return null
-	return ImageTexture.create_from_image(image)
-
 
 func _connect_viewport_resize(handler: Callable) -> void:
 	var viewport := get_viewport()
