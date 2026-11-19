@@ -46,6 +46,8 @@ var _reaction_player = null
 var _reaction_sounds = null
 var _species_icons = null
 var _last_progress_signature := ""
+# Previous shop-phase run snapshot, for detecting sold monsters between polls.
+var _last_shop_snapshot: Dictionary = {}
 
 # Persistent per-metric high scores and the shop's Brain Rot Memories panel.
 var _high_scores: Dictionary = {}
@@ -319,8 +321,11 @@ func _poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 		return
 	_note_run_reaction_gate(is_shop)
 	if not is_shop:
+		_last_shop_snapshot = {}
 		return
 	_reaction_player.play_all(_reaction_evaluator.poll(run_snapshot))
+	_reaction_player.play_all(_reaction_evaluator.poll_sold(_last_shop_snapshot, run_snapshot))
+	_last_shop_snapshot = run_snapshot
 
 
 ## Log the run-reaction phase gate only when it changes, so the first real session
@@ -466,6 +471,7 @@ func _check_run_transition(run, run_snapshot: Dictionary) -> void:
 
 	_print_notice("Brain Rot: run reset (%s)" % reason)
 	_run_tracking = tracking
+	_last_shop_snapshot = {}
 	if _reaction_evaluator != null:
 		_reaction_evaluator.reset_run()
 	if _battle_completion != null:

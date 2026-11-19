@@ -19,8 +19,8 @@ const GAP := 4.0
 const UNIT_ICON_SIZE := 12.0
 const UNIT_ICON_GAP := 3.0
 
-const COLUMN_FRACTIONS := [0.30, 0.30, 0.40]
-const HEADER_LABELS := ["Metric", "Best", "Unit"]
+const COLUMN_FRACTIONS := [0.24, 0.20, 0.32, 0.24]
+const HEADER_LABELS := ["Metric", "Best", "Unit", "Date Acquired"]
 
 var _metrics: Dictionary = {}
 
@@ -78,9 +78,11 @@ func _table_cell_text(row_index: int, column: int) -> String:
 	var entry = _metrics.get(label)
 	var value := 0
 	var unit := ""
+	var date_acquired := ""
 	if entry is Dictionary:
 		value = int(entry.get("value", 0))
 		unit = str(entry.get("unit", ""))
+		date_acquired = str(entry.get("date_acquired", ""))
 	elif entry is int or entry is float:
 		value = int(entry)
 	match column:
@@ -90,6 +92,8 @@ func _table_cell_text(row_index: int, column: int) -> String:
 			return HighScores.format_value(value) if value > 0 else "\u2014"
 		2:
 			return HighScores.format_unit(unit) if value > 0 else "\u2014"
+		3:
+			return date_acquired if value > 0 and not date_acquired.is_empty() else "\u2014"
 	return ""
 
 

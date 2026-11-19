@@ -34,6 +34,13 @@ func test_render_double_rainbow() -> void:
 	)
 
 
+func test_render_harambe() -> void:
+	assert_eq(
+		ReactionText.render("harambe", "sold", {}),
+		"Sarudo has been sold. Gone, but never forgotten. <3",
+	)
+
+
 func test_render_leaves_no_unfilled_braces_for_known_cases() -> void:
 	for id in ReactionText.TEMPLATES:
 		for case_name in ReactionText.TEMPLATES[id]:

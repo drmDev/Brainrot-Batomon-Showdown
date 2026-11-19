@@ -3,6 +3,7 @@ extends "test_runner.gd"
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const ReactionText = preload("../catalog/reaction_text.gd")
+const NotificationRequest = preload("../notifications/notification_request.gd")
 
 
 func test_ids_are_unique() -> void:
@@ -113,11 +114,12 @@ func test_non_monster_reactions_have_icon_textures() -> void:
 	for id in expected:
 		var path := "res://assets/icons/" + str(expected[id])
 		assert_true(FileAccess.file_exists(path), "missing icon: " + path)
-		assert_true(Catalog.icon_texture_for(id) is Texture2D, "missing texture for " + id)
+		var request = NotificationRequest.new(NotificationRequest.KIND_REACTION, id, "title", "detail")
+		assert_true(request.icon_texture is Texture2D, "missing texture for " + id)
 
 
 func test_monster_reactions_do_not_author_icon_file() -> void:
-	for id in [Catalog.APES_TOGETHER, Catalog.BIG_DOG, Catalog.OH_YEAH, Catalog.HERD_U_LIEK_MUDKIPZ]:
+	for id in [Catalog.APES_TOGETHER, Catalog.BIG_DOG, Catalog.OH_YEAH, Catalog.HERD_U_LIEK_MUDKIPZ, Catalog.HARAMBE]:
 		assert_eq(str(Catalog.entry(id).get("icon_file", "")), "", id)
 
 
@@ -135,6 +137,7 @@ func test_monster_run_reactions_have_species() -> void:
 	assert_eq(str(Catalog.entry(Catalog.APES_TOGETHER).get("species", "")), "monster.name.sunsage")
 	assert_eq(str(Catalog.entry(Catalog.OH_YEAH).get("species", "")), "monster.name.beetdown")
 	assert_eq(str(Catalog.entry(Catalog.HERD_U_LIEK_MUDKIPZ).get("species", "")), "monster.name.dewlotl")
+	assert_eq(str(Catalog.entry(Catalog.HARAMBE).get("species", "")), "monster.name.sarudo")
 
 
 func test_big_dog_has_static_cinnabark_species() -> void:

@@ -38,10 +38,6 @@ extends RefCounted
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
-# Evaluation scope labels for registered_rows() (dev tooling / catalog).
-const SCOPE_RUN := Catalog.SCOPE_RUN
-const SCOPE_BATTLE := Catalog.SCOPE_BATTLE
-
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
 
@@ -119,6 +115,27 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 				"species_key": species_key,
 			})
 
+	return triggered
+
+
+## Poll a shop sale diff: Sarudo present in `previous_run` and gone/reduced in
+## `current_run`. Fires once per run (run-scoped).
+func poll_sold(previous_run: Dictionary, current_run: Dictionary) -> Array:
+	var triggered: Array = []
+	if previous_run.is_empty() or current_run.is_empty():
+		return triggered
+	if _occurrences.has(Catalog.HARAMBE):
+		return triggered
+	var match: Dictionary = Catalog.sold_match(previous_run, current_run)
+	if match.is_empty():
+		return triggered
+	_occurrences[Catalog.HARAMBE] = 1
+	triggered.append({
+		"id": Catalog.HARAMBE,
+		"case": str(match.get("case", "")),
+		"params": match.get("params", {}),
+		"species_key": "monster.name.sarudo",
+	})
 	return triggered
 
 

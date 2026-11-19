@@ -22,7 +22,7 @@ extends RefCounted
 const Catalog = preload("brain_rot_catalog.gd")
 
 ## All fill-in-the-blank template names. `placeholders()` only reports these.
-const KNOWN_PLACEHOLDERS := ["species", "metric", "value", "level", "income", "lives", "day", "wins"]
+const KNOWN_PLACEHOLDERS := ["species", "metric", "value", "income"]
 
 ## Reaction id -> case -> template. Case names come from the catalog/evaluator, not
 ## from here; render() warns when an id/case is missing and falls back to the title.
@@ -64,6 +64,9 @@ const TEMPLATES := {
 	},
 	"double_rainbow": {
 		"owned": "As Twins, made double shinies!",
+	},
+	"harambe": {
+		"sold": "Sarudo has been sold. Gone, but never forgotten. <3",
 	},
 	"big_dog_best_dog": {
 		"battle": "{species} put up {value} shield in battle. What a good boy!",
@@ -137,16 +140,8 @@ static func value_for(placeholder: String, params: Dictionary) -> String:
 			return metric_word(str(params.get("metric", "")))
 		"value":
 			return abbreviate_number(int(params.get("value", 0)))
-		"level":
-			return str(int(params.get("level", 0)))
 		"income":
 			return str(int(params.get("income", 0)))
-		"lives":
-			return str(int(params.get("lives", 0)))
-		"day":
-			return str(int(params.get("day", 0)))
-		"wins":
-			return str(int(params.get("wins", 0)))
 	return ""
 
 

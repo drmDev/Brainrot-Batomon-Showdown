@@ -5,7 +5,7 @@ extends RefCounted
 ##   {
 ##     "version": 1,
 ##     "metrics": {
-##       "damage": {"value": int, "unit": String},  # unit is a species name_key
+##       "damage": {"value": int, "unit": String, "date_acquired": String},
 ##       ...
 ##     }
 ##   }
@@ -27,6 +27,12 @@ const PLAYER_TEAM_ID := 0
 
 static func empty_store() -> Dictionary:
 	return {"version": VERSION, "metrics": {}}
+
+
+## Current local date as MM/DD/YY (e.g. "11/18/26").
+static func current_date_string() -> String:
+	var date := Time.get_date_dict_from_system()
+	return "%02d/%02d/%02d" % [int(date["month"]), int(date["day"]), int(date["year"]) % 100]
 
 
 ## Parse a store from JSON text. Missing, corrupt, or wrongly typed data yields an
@@ -130,8 +136,9 @@ static func record_battle(store: Dictionary, battle_snapshot: Dictionary) -> Dic
 		elif existing is int or existing is float:
 			previous = int(existing)
 		if value > previous:
-			metrics[label] = {"value": value, "unit": unit}
-			improved[label] = {"value": value, "previous": previous, "unit": unit}
+			var date_acquired := current_date_string()
+			metrics[label] = {"value": value, "unit": unit, "date_acquired": date_acquired}
+			improved[label] = {"value": value, "previous": previous, "unit": unit, "date_acquired": date_acquired}
 	return improved
 
 
@@ -162,16 +169,18 @@ static func format_unit(name_key: String) -> String:
 static func _normalize_metric(raw) -> Dictionary:
 	var value := 0
 	var unit := ""
+	var date_acquired := ""
 	if raw is Dictionary:
 		var raw_value = raw.get("value")
 		if raw_value is int or raw_value is float:
 			value = int(raw_value)
 		unit = str(raw.get("unit", ""))
+		date_acquired = str(raw.get("date_acquired", ""))
 	elif raw is int or raw is float:
 		value = int(raw)
 	if value <= 0:
 		return {}
-	return {"value": value, "unit": unit}
+	return {"value": value, "unit": unit, "date_acquired": date_acquired}
 
 
 static func _unit_name_key(team: Array, slot: int) -> String:

@@ -325,8 +325,6 @@ func _default_number(placeholder: String) -> int:
 			var rule := Catalog.battle_rule(selected_id())
 			var value := int(rule.get("value", 0))
 			return value + 1 if bool(rule.get("strict", false)) else value
-		"level":
-			return 3
 		"income":
 			match selected_id():
 				Catalog.SIX_NINE:
@@ -338,10 +336,6 @@ func _default_number(placeholder: String) -> int:
 				Catalog.OVER_9000:
 					return 9001
 			return 67
-		"lives":
-			return 6
-		"day", "wins":
-			return 7
 	return 0
 
 

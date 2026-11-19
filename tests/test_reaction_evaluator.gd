@@ -975,6 +975,40 @@ func test_double_rainbow_requires_level3_shiny() -> void:
 	])))
 
 
+func test_harambe_triggers_when_sarudo_disappears() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with("twins", [{"name_key": "monster.name.sarudo", "level": 2}])
+	var current := _run_with("twins", [])
+	var earned: Array = evaluator.poll_sold(previous, current)
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.HARAMBE)
+		_assert_run_case(earned[0], "sold")
+
+
+func test_harambe_fires_once_per_run() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with("twins", [{"name_key": "monster.name.sarudo", "level": 2}])
+	var current := _run_with("twins", [])
+	assert_eq(evaluator.poll_sold(previous, current).size(), 1)
+	assert_empty(evaluator.poll_sold(previous, current))
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_sold(previous, current).size(), 1)
+
+
+func test_harambe_does_not_trigger_without_a_sarudo_loss() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with("twins", [{"name_key": "monster.name.leafleap", "level": 2}])
+	var current := _run_with("twins", [])
+	assert_empty(evaluator.poll_sold(previous, current))
+	var same := _run_with("twins", [{"name_key": "monster.name.sarudo", "level": 2}])
+	assert_empty(evaluator.poll_sold(same, same))
+
+
+func test_harambe_ignores_empty_snapshots() -> void:
+	assert_empty(_new_evaluator().poll_sold({}, {}))
+
+
 func test_converted_reactions_fire_once_per_run() -> void:
 	var evaluator = _new_evaluator()
 	var snapshot := _run_day(TWINS, 3, [_monster(BEETDOWN, 3)])

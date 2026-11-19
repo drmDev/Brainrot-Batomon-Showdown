@@ -50,6 +50,7 @@ const BIG_DOG := "big_dog_best_dog"
 const OH_YEAH := "oh_yeah"
 const HERD_U_LIEK_MUDKIPZ := "herd_u_liek_mudkipz"
 const DOUBLE_RAINBOW := "double_rainbow"
+const HARAMBE := "harambe"
 
 const ENTRIES := [
 	{
@@ -132,6 +133,14 @@ const ENTRIES := [
 		"icon_file": "dubRainbow.png",
 		"sound": {"file": "dubRainbow.ogg"},
 		"scopes": [SCOPE_RUN],
+	},
+	{
+		"kind": KIND_REACTION,
+		"id": HARAMBE,
+		"title": "Dicks out for Harambe!",
+		"species": "monster.name.sarudo",
+		"sound": {"file": "harambe.ogg"},
+		"scopes": [SCOPE_RUN],
 	}
 ]
 
@@ -170,22 +179,6 @@ static func icon_for(id: String) -> String:
 		if typeof(explicit) == TYPE_STRING and not str(explicit).is_empty():
 			return str(explicit)
 	return _derive_icon(id)
-
-
-## Texture for a reaction's authored icon_file, or null when absent/missing.
-## Non-monster reactions (67, nice, 420, 666, over 9000) use this instead of
-## placeholder text; monster reactions leave icon_file absent and use their
-## species icon resolved elsewhere.
-static func icon_texture_for(id: String) -> Texture2D:
-	var found := entry(id)
-	var file_name := str(found.get("icon_file", ""))
-	if file_name.is_empty():
-		return null
-	var path := ProjectSettings.globalize_path("res://assets/icons/" + file_name)
-	var image := Image.load_from_file(path)
-	if image == null:
-		return null
-	return ImageTexture.create_from_image(image)
 
 
 ## Derive badge text from an id when no explicit icon is authored. Number words
@@ -372,6 +365,28 @@ static func _double_rainbow_match(snapshot: Dictionary) -> Dictionary:
 			if bool(monster.get("shiny", false)):
 				return {"case": "owned", "params": {}}
 	return {}
+
+
+## HARAMBE: a Sarudo disappeared from team/bench between two shop snapshots.
+static func sold_match(previous: Dictionary, current: Dictionary) -> Dictionary:
+	if previous.is_empty() or current.is_empty():
+		return {}
+	if _count_species(previous, "monster.name.sarudo") > _count_species(current, "monster.name.sarudo"):
+		return {"case": "sold", "params": {}}
+	return {}
+
+
+## Number of team/bench monsters with `species_key`.
+static func _count_species(snapshot: Dictionary, species_key: String) -> int:
+	var count := 0
+	for list_name in ["team", "bench"]:
+		var list = snapshot.get(list_name)
+		if not list is Array:
+			continue
+		for monster in list:
+			if monster is Dictionary and str(monster.get("name_key", "")) == species_key:
+				count += 1
+	return count
 
 
 ## Team/bench contains `species_key` at `level_required` (or any level when -1).

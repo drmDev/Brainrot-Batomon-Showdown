@@ -51,7 +51,7 @@ func test_parse_normalizes_metric_entries() -> void:
 	var store := HighScores.parse(JSON.stringify({
 		"version": 1,
 		"metrics": {
-			"damage": {"value": 12345, "unit": "monster.name.cinnabark"},
+			"damage": {"value": 12345, "unit": "monster.name.cinnabark", "date_acquired": "11/18/26"},
 			"heal": 6789,
 			"shield": {"value": -5, "unit": "x"},
 			"burn": {"value": "nope", "unit": "x"},
@@ -60,6 +60,7 @@ func test_parse_normalizes_metric_entries() -> void:
 	var metrics: Dictionary = store.get("metrics", {})
 	assert_eq(int(metrics.get("damage", {}).get("value", 0)), 12345)
 	assert_eq(str(metrics.get("damage", {}).get("unit", "")), "monster.name.cinnabark")
+	assert_eq(str(metrics.get("damage", {}).get("date_acquired", "")), "11/18/26")
 	assert_eq(int(metrics.get("heal", {}).get("value", 0)), 6789)
 	assert_false(metrics.has("shield"))
 	assert_false(metrics.has("burn"))
@@ -73,6 +74,7 @@ func test_record_battle_uses_best_single_unit_per_metric() -> void:
 	], _team()))
 	assert_eq(int(improved.get("damage", {}).get("value", 0)), 500)
 	assert_eq(str(improved.get("damage", {}).get("unit", "")), "monster.name.rhizuka")
+	assert_true(str(improved.get("damage", {}).get("date_acquired", "")).length() > 0)
 	assert_eq(int(store.get("metrics", {}).get("damage", {}).get("value", 0)), 500)
 
 
@@ -114,6 +116,13 @@ func test_record_battle_handles_missing_team_slot() -> void:
 	var improved := HighScores.record_battle(store, _battle([_unit(5, {"damage_dealt": 100.0})], _team()))
 	assert_eq(int(improved.get("damage", {}).get("value", 0)), 100)
 	assert_eq(str(improved.get("damage", {}).get("unit", "")), "")
+
+
+func test_current_date_string_uses_mm_dd_yy() -> void:
+	var date := HighScores.current_date_string()
+	var regex := RegEx.new()
+	regex.compile("^\\d{2}/\\d{2}/\\d{2}$")
+	assert_true(regex.search(date) != null, date)
 
 
 func test_format_value_abbreviates() -> void:
