@@ -18,3 +18,4 @@ dev/*
 !dev/dev_config.gd
 !dev/fixtures/
 _agent.md
+docs/*
