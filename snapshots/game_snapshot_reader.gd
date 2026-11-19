@@ -59,6 +59,10 @@ const KIND_BATTLE := "battle"
 const BASE_INCOME := 35
 const INCOME_PER_DAY := 5
 
+## Stat enum values for Poison and Shock (verified in game/monsters/stat.gd).
+const STAT_POISON := 5
+const STAT_SHOCK := 6
+
 # Shared property probe (mod_main passes its _has_property Callable).
 var _has_prop: Callable
 
@@ -167,8 +171,31 @@ func _read_monsters(monsters) -> Array:
 				entry["level"] = level
 			if _has_prop.call(monster, "is_shiny"):
 				entry["shiny"] = bool(monster.get("is_shiny"))
+			if _has_prop.call(monster, "_permanent_buffs"):
+				var perm_buffs = monster.get("_permanent_buffs")
+				var poison = _read_perm_buff(perm_buffs, STAT_POISON)
+				if poison != null:
+					entry["perm_poison"] = poison
+				var shock = _read_perm_buff(perm_buffs, STAT_SHOCK)
+				if shock != null:
+					entry["perm_shock"] = shock
 		out.append(entry)
 	return out
+
+
+## Float value of a permanent buff stat from a monster's _permanent_buffs
+## Dictionary, or null when missing/non-numeric. Keys may be ints (Stat enum) or
+## their string forms (some save/load paths normalize them).
+func _read_perm_buff(perm_buffs, stat_key: int):
+	if not perm_buffs is Dictionary:
+		return null
+	for key in [stat_key, str(stat_key)]:
+		if not perm_buffs.has(key):
+			continue
+		var value = perm_buffs.get(key)
+		if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+			return float(value)
+	return null
 
 
 

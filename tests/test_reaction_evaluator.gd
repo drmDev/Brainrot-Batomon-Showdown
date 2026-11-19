@@ -897,6 +897,9 @@ func test_apes_together_reset_run_rearms() -> void:
 
 const BEETDOWN := "monster.name.beetdown"
 const DEWLOTL := "monster.name.dewlotl"
+const FURNADON := "monster.name.furnadon"
+const BUMBLEBOLT := "monster.name.bumblebolt"
+const TENGUSTO := "monster.name.tengusto"
 
 
 func _run_day(trainer: String, day: int, team: Array, bench: Array = []) -> Dictionary:
@@ -939,6 +942,109 @@ func test_herd_u_liek_mudkipz_triggers_for_non_twins_trainer() -> void:
 
 func test_herd_u_liek_mudkipz_does_not_trigger_below_level3() -> void:
 	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(DEWLOTL, 2)])))
+
+
+func test_trogdor_triggers_with_level3_furnadon() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(FURNADON, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.TROGDOR)
+		_assert_run_case(earned[0], "owned")
+
+
+func test_trogdor_triggers_for_non_twins_trainer() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(FURNADON, 3)])).size(), 1)
+
+
+func test_trogdor_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(FURNADON, 2)])))
+
+
+func test_trogdor_triggers_for_bench_only() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [], [_monster(FURNADON, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.TROGDOR)
+
+
+func test_not_the_bees_triggers_with_level3_bumblebolt() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [_monster(BUMBLEBOLT, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.NOT_THE_BEES)
+		_assert_run_case(earned[0], "owned")
+
+
+func test_not_the_bees_triggers_for_non_twins_trainer() -> void:
+	assert_eq(_new_evaluator().poll(_run_day(OTHER_TRAINER, 3, [_monster(BUMBLEBOLT, 3)])).size(), 1)
+
+
+func test_not_the_bees_does_not_trigger_below_level3() -> void:
+	assert_empty(_new_evaluator().poll(_run_day(TWINS, 3, [_monster(BUMBLEBOLT, 2)])))
+
+
+func test_not_the_bees_triggers_for_bench_only() -> void:
+	var earned: Array = _new_evaluator().poll(_run_day(TWINS, 3, [], [_monster(BUMBLEBOLT, 3)]))
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.NOT_THE_BEES)
+
+
+# --- 12b. tetsuo: Tengusto gains Poison or Shock permanent buff ---
+
+func test_tetsuo_triggers_when_tengusto_gains_poison() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3}])
+	var current := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3, "perm_poison": 4.0}])
+	var earned: Array = evaluator.poll_buff(previous, current)
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("id", "")), Catalog.TETSUO)
+		_assert_run_case(earned[0], "gained")
+
+
+func test_tetsuo_triggers_when_tengusto_gains_shock() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3}])
+	var current := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3, "perm_shock": 2.0}])
+	assert_eq(evaluator.poll_buff(previous, current).size(), 1)
+
+
+func test_tetsuo_does_not_trigger_without_gain() -> void:
+	var evaluator = _new_evaluator()
+	var snapshot := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3, "perm_poison": 4.0}])
+	assert_empty(evaluator.poll_buff(snapshot, snapshot))
+
+
+func test_tetsuo_does_not_trigger_for_non_tengusto() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with(TWINS, [{"name_key": BEETDOWN, "level": 3}])
+	var current := _run_with(TWINS, [{"name_key": BEETDOWN, "level": 3, "perm_poison": 4.0}])
+	assert_empty(evaluator.poll_buff(previous, current))
+
+
+func test_tetsuo_fires_once_per_run() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3}])
+	var current := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3, "perm_poison": 4.0}])
+	assert_eq(evaluator.poll_buff(previous, current).size(), 1)
+	assert_empty(evaluator.poll_buff(previous, current))
+	evaluator.reset_run()
+	assert_eq(evaluator.poll_buff(previous, current).size(), 1)
+
+
+func test_tetsuo_ignores_empty_snapshots() -> void:
+	assert_empty(_new_evaluator().poll_buff({}, {}))
+
+
+func test_tetsuo_carries_species_key() -> void:
+	var evaluator = _new_evaluator()
+	var previous := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3}])
+	var current := _run_with(TWINS, [{"name_key": TENGUSTO, "level": 3, "perm_shock": 2.0}])
+	var earned: Array = evaluator.poll_buff(previous, current)
+	assert_eq(earned.size(), 1)
+	if earned.size() == 1:
+		assert_eq(str(earned[0].get("species_key", "")), TENGUSTO)
 
 
 func test_double_rainbow_triggers_for_twins_with_level3_shiny() -> void:
@@ -1035,6 +1141,8 @@ func test_run_monster_reactions_carry_species_key() -> void:
 		{"id": APES_TOGETHER, "snapshot": _run_with(TWINS, [_monster(SUNSAGE, 3)]), "species": SUNSAGE},
 		{"id": Catalog.OH_YEAH, "snapshot": _run_day(TWINS, 3, [_monster(BEETDOWN, 3)]), "species": BEETDOWN},
 		{"id": Catalog.HERD_U_LIEK_MUDKIPZ, "snapshot": _run_day(TWINS, 3, [_monster(DEWLOTL, 3)]), "species": DEWLOTL},
+		{"id": Catalog.TROGDOR, "snapshot": _run_day(TWINS, 3, [_monster(FURNADON, 3)]), "species": FURNADON},
+		{"id": Catalog.NOT_THE_BEES, "snapshot": _run_day(TWINS, 3, [_monster(BUMBLEBOLT, 3)]), "species": BUMBLEBOLT},
 	]
 	for case in cases:
 		var evaluator = _new_evaluator()

@@ -58,6 +58,40 @@ func test_read_run_shiny_absent_when_missing() -> void:
 	assert_false(entry.has("shiny"), "missing is_shiny must stay absent")
 
 
+func test_read_run_captures_permanent_poison_and_shock() -> void:
+	var run = TestHelpers.run("gentleman", 3, [
+		TestHelpers.monster(RHIZUKA, 2, false, {5: 4.0, 6: 2.0}),
+	])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_eq(entry.get("perm_poison"), 4.0)
+	assert_eq(entry.get("perm_shock"), 2.0)
+
+
+func test_read_run_permanent_buffs_accept_string_keys() -> void:
+	var run = TestHelpers.run("gentleman", 3, [
+		TestHelpers.monster(RHIZUKA, 2, false, {"5": 4.0, "6": 2.0}),
+	])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_eq(entry.get("perm_poison"), 4.0)
+	assert_eq(entry.get("perm_shock"), 2.0)
+
+
+func test_read_run_permanent_buffs_absent_when_missing() -> void:
+	var run = TestHelpers.run("gentleman", 3, [TestHelpers.monster(RHIZUKA, 2)])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_false(entry.has("perm_poison"))
+	assert_false(entry.has("perm_shock"))
+
+
+func test_read_run_permanent_buffs_ignore_invalid_values() -> void:
+	var run = TestHelpers.run("gentleman", 3, [
+		TestHelpers.monster(RHIZUKA, 2, false, {5: "nope", 6: null}),
+	])
+	var entry: Dictionary = _new_reader().read_run(run)["team"][0]
+	assert_false(entry.has("perm_poison"))
+	assert_false(entry.has("perm_shock"))
+
+
 func test_read_run_missing_keys_stay_absent() -> void:
 	var run = TestHelpers.FakeObject.new({"current_round": 3})
 	var snapshot: Dictionary = _new_reader().read_run(run)

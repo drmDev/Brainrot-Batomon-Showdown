@@ -51,6 +51,9 @@ const OH_YEAH := "oh_yeah"
 const HERD_U_LIEK_MUDKIPZ := "herd_u_liek_mudkipz"
 const DOUBLE_RAINBOW := "double_rainbow"
 const HARAMBE := "harambe"
+const TROGDOR := "trogdor"
+const NOT_THE_BEES := "not_the_bees"
+const TETSUO := "tetsuo"
 
 const ENTRIES := [
 	{
@@ -142,6 +145,30 @@ const ENTRIES := [
 		"title": "Dicks out for Harambe!",
 		"species": "monster.name.sarudo",
 		"sound": {"file": "harambe.ogg"},
+		"scopes": [SCOPE_RUN],
+	},
+	{
+		"kind": KIND_REACTION,
+		"id": TROGDOR,
+		"title": "BURNINATING THE COUNTRYSIDE!",
+		"species": "monster.name.furnadon",
+		"sound": {"file": "trogdor.ogg"},
+		"scopes": [SCOPE_RUN],
+	},
+	{
+		"kind": KIND_REACTION,
+		"id": NOT_THE_BEES,
+		"title": "NOT THE BEES!",
+		"species": "monster.name.bumblebolt",
+		"sound": {"file": "not-the-bees.ogg"},
+		"scopes": [SCOPE_RUN],
+	},
+	{
+		"kind": KIND_REACTION,
+		"id": TETSUO,
+		"title": "TETSUO!",
+		"species": "monster.name.tengusto",
+		"sound": {"file": "tetsuo.ogg"},
 		"scopes": [SCOPE_RUN],
 	}
 ]
@@ -263,6 +290,10 @@ static func run_match(id: String, snapshot: Dictionary) -> Dictionary:
 			return _dewlotl_match(snapshot)
 		DOUBLE_RAINBOW:
 			return _double_rainbow_match(snapshot)
+		TROGDOR:
+			return _furnadon_match(snapshot)
+		NOT_THE_BEES:
+			return _bumblebolt_match(snapshot)
 	return {}
 
 
@@ -349,6 +380,16 @@ static func _dewlotl_match(snapshot: Dictionary) -> Dictionary:
 	return _has_species(snapshot, "monster.name.dewlotl", 3)
 
 
+## TROGDOR: owns a level-3 Furnadon (any trainer).
+static func _furnadon_match(snapshot: Dictionary) -> Dictionary:
+	return _has_species(snapshot, "monster.name.furnadon", 3)
+
+
+## NOT_THE_BEES: owns a level-3 Bumblebolt (any trainer).
+static func _bumblebolt_match(snapshot: Dictionary) -> Dictionary:
+	return _has_species(snapshot, "monster.name.bumblebolt", 3)
+
+
 ## DOUBLE_RAINBOW: Twins owns any level-3 shiny monster.
 static func _double_rainbow_match(snapshot: Dictionary) -> Dictionary:
 	var trainer = snapshot.get("trainer_id")
@@ -376,6 +417,43 @@ static func sold_match(previous: Dictionary, current: Dictionary) -> Dictionary:
 	if _count_species(previous, "monster.name.sarudo") > _count_species(current, "monster.name.sarudo"):
 		return {"case": "sold", "params": {}}
 	return {}
+
+
+## TETSUO: a Tengusto gained a Poison or Shock permanent buff between two shop
+## snapshots. Compares the summed Poison+Shock permanent buffs across owned
+## Tengusto (team + bench); fires when the total increased.
+static func buff_gain_match(previous: Dictionary, current: Dictionary) -> Dictionary:
+	if previous.is_empty() or current.is_empty():
+		return {}
+	if _tengusto_poison_shock_total(current) > _tengusto_poison_shock_total(previous):
+		return {"case": "gained", "params": {}}
+	return {}
+
+
+## Summed Poison + Shock permanent buffs across owned Tengusto (team + bench).
+static func _tengusto_poison_shock_total(snapshot: Dictionary) -> float:
+	var total := 0.0
+	for list_name in ["team", "bench"]:
+		var list = snapshot.get(list_name)
+		if not list is Array:
+			continue
+		for monster in list:
+			if not monster is Dictionary:
+				continue
+			if str(monster.get("name_key", "")) != "monster.name.tengusto":
+				continue
+			total += _monster_poison_shock(monster)
+	return total
+
+
+## Poison + Shock permanent buffs on one monster snapshot.
+static func _monster_poison_shock(monster: Dictionary) -> float:
+	var total := 0.0
+	for key in ["perm_poison", "perm_shock"]:
+		var value = monster.get(key)
+		if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+			total += float(value)
+	return total
 
 
 ## Number of team/bench monsters with `species_key`.

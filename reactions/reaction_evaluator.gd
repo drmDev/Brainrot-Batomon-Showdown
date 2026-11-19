@@ -139,6 +139,27 @@ func poll_sold(previous_run: Dictionary, current_run: Dictionary) -> Array:
 	return triggered
 
 
+## Poll a shop buff diff: a Tengusto gained a Poison or Shock permanent buff
+## between `previous_run` and `current_run`. Fires once per run (run-scoped).
+func poll_buff(previous_run: Dictionary, current_run: Dictionary) -> Array:
+	var triggered: Array = []
+	if previous_run.is_empty() or current_run.is_empty():
+		return triggered
+	if _occurrences.has(Catalog.TETSUO):
+		return triggered
+	var match: Dictionary = Catalog.buff_gain_match(previous_run, current_run)
+	if match.is_empty():
+		return triggered
+	_occurrences[Catalog.TETSUO] = 1
+	triggered.append({
+		"id": Catalog.TETSUO,
+		"case": str(match.get("case", "")),
+		"params": match.get("params", {}),
+		"species_key": "monster.name.tengusto",
+	})
+	return triggered
+
+
 ## Clear all tracking. Call at a verified run transition.
 func reset_run() -> void:
 	_occurrences.clear()

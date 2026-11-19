@@ -119,7 +119,7 @@ func test_non_monster_reactions_have_icon_textures() -> void:
 
 
 func test_monster_reactions_do_not_author_icon_file() -> void:
-	for id in [Catalog.APES_TOGETHER, Catalog.BIG_DOG, Catalog.OH_YEAH, Catalog.HERD_U_LIEK_MUDKIPZ, Catalog.HARAMBE]:
+	for id in [Catalog.APES_TOGETHER, Catalog.BIG_DOG, Catalog.OH_YEAH, Catalog.HERD_U_LIEK_MUDKIPZ, Catalog.HARAMBE, Catalog.TROGDOR, Catalog.NOT_THE_BEES, Catalog.TETSUO]:
 		assert_eq(str(Catalog.entry(id).get("icon_file", "")), "", id)
 
 
@@ -138,6 +138,9 @@ func test_monster_run_reactions_have_species() -> void:
 	assert_eq(str(Catalog.entry(Catalog.OH_YEAH).get("species", "")), "monster.name.beetdown")
 	assert_eq(str(Catalog.entry(Catalog.HERD_U_LIEK_MUDKIPZ).get("species", "")), "monster.name.dewlotl")
 	assert_eq(str(Catalog.entry(Catalog.HARAMBE).get("species", "")), "monster.name.sarudo")
+	assert_eq(str(Catalog.entry(Catalog.TROGDOR).get("species", "")), "monster.name.furnadon")
+	assert_eq(str(Catalog.entry(Catalog.NOT_THE_BEES).get("species", "")), "monster.name.bumblebolt")
+	assert_eq(str(Catalog.entry(Catalog.TETSUO).get("species", "")), "monster.name.tengusto")
 
 
 func test_big_dog_has_static_cinnabark_species() -> void:

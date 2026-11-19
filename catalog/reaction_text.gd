@@ -68,6 +68,15 @@ const TEMPLATES := {
 	"harambe": {
 		"sold": "Sarudo has been sold. Gone, but never forgotten. <3",
 	},
+	"trogdor": {
+		"owned": "Level 3 Furnadon!",
+	},
+	"not_the_bees": {
+		"owned": "Bumblebolt reminds you to just bee yourself.",
+	},
+	"tetsuo": {
+		"gained": "Tengusto is coming close to reaching his final form!",
+	},
 	"big_dog_best_dog": {
 		"battle": "{species} put up {value} shield in battle. What a good boy!",
 	},

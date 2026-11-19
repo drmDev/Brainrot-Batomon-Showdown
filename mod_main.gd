@@ -442,6 +442,7 @@ func _poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 		return
 	_reaction_player.play_all(_reaction_evaluator.poll(run_snapshot))
 	_reaction_player.play_all(_reaction_evaluator.poll_sold(_last_shop_snapshot, run_snapshot))
+	_reaction_player.play_all(_reaction_evaluator.poll_buff(_last_shop_snapshot, run_snapshot))
 	_last_shop_snapshot = run_snapshot
 
 

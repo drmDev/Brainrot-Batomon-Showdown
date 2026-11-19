@@ -41,6 +41,27 @@ func test_render_harambe() -> void:
 	)
 
 
+func test_render_trogdor() -> void:
+	assert_eq(
+		ReactionText.render("trogdor", "owned", {}),
+		"Level 3 Furnadon!",
+	)
+
+
+func test_render_not_the_bees() -> void:
+	assert_eq(
+		ReactionText.render("not_the_bees", "owned", {}),
+		"Bumblebolt reminds you to just bee yourself.",
+	)
+
+
+func test_render_tetsuo() -> void:
+	assert_eq(
+		ReactionText.render("tetsuo", "gained", {}),
+		"Tengusto is coming close to reaching his final form!",
+	)
+
+
 func test_render_leaves_no_unfilled_braces_for_known_cases() -> void:
 	for id in ReactionText.TEMPLATES:
 		for case_name in ReactionText.TEMPLATES[id]:
