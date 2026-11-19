@@ -6,7 +6,7 @@
 
 extends RefCounted
 
-const DEV_MODE := true
+const DEV_MODE := false
 const DEV_MODE_ENV_VAR := "BRAINROT_DEV_MODE"
 
 
