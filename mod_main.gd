@@ -21,6 +21,12 @@ const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 const SHOP_SCRIPT := "res://game/states/shop_state.gd"
 const MOD_BASE_DIR := "res://mods/BrainRot"
 
+# Mod Volume slider (make_custom_settings_menu_entries). The loader draws declared
+# settings as a stepper, so volume is a custom HSlider persisted by core/mod_config.gd.
+const SLIDER_STEP := 5
+# The loader's own text theme; generic Labels added by a mod do not inherit it.
+const SETTINGS_TEXT_THEME := "res://assets/ui/themes/text/description_text.tres"
+
 # Log file (same layout as Creature Comforts, different path)
 const OUTPUT_DIR := "user://brain_rot"
 const LOG_FILE := "inspect.log"
@@ -39,6 +45,11 @@ var _state_capture = null
 
 # Developer-only toast preview (created only when dev/dev_config.gd enables it).
 var _toast_preview_panel = null
+
+# User settings (currently only Mod Volume) from core/mod_config.gd.
+var _config = null
+# One-shot preview player for the Mod Volume slider (created on first release).
+var _settings_preview = null
 
 # Reactions: snapshot-driven conditions that log, submit toasts, and play sounds.
 var _reaction_evaluator = null
@@ -88,6 +99,7 @@ func _initialize_mod() -> void:
 		return
 	_initialization_started = true
 
+	_setup_config()
 	_setup_core()
 	_setup_reactions()
 	_setup_auto_updater()
@@ -97,6 +109,18 @@ func _initialize_mod() -> void:
 	_initialized = true
 	_setup_log_file()
 	_setup_dev_tools()
+
+
+## Load the mod's own settings module and bind it to the Mod Loader (may be null
+## when running standalone). Mod Volume is not declared in mod.json, so it is
+## persisted in the mod's own file rather than the loader's store.
+func _setup_config() -> void:
+	var ModConfig = load(MOD_BASE_DIR.path_join("core/mod_config.gd"))
+	if ModConfig == null:
+		return
+	_config = ModConfig.new()
+	_config.setup(get_node_or_null("/root/ModLoader"))
+	_config.use_store(ModConfig.STORE_PATH)
 
 
 func _setup_core() -> void:
@@ -146,7 +170,7 @@ func _setup_reactions() -> void:
 
 	var ReactionSounds = load(base_dir.path_join("audio/reaction_sounds.gd"))
 	if ReactionSounds != null:
-		_reaction_sounds = ReactionSounds.new(self)
+		_reaction_sounds = ReactionSounds.new(self, Callable(), Callable(self, "_current_mod_volume"))
 
 	# Species icon lookup for monster-involving reactions. Copied from Creature
 	# Comforts (core/species_icons.gd) so Brain Rot stays standalone.
@@ -173,6 +197,99 @@ func _setup_auto_updater() -> void:
 	add_child(_updater)
 	_updater.setup(VERSION, get_script().resource_path.get_base_dir(), true)
 	_updater.start()
+
+
+## Community Mod Loader hook (Settings > Mods). The loader appends custom entries
+## after every declared row. Brain Rot declares no settings, so this slider is the
+## only row. It is the only volume control: Mod Volume is not declared in mod.json
+## (the loader would draw a left/right stepper), and its value is stored by
+## core/mod_config.gd.
+##
+## The settings panel does not theme generic Labels/Sliders, so a bare row draws
+## blank; both controls are styled here (the loader's text theme plus explicit
+## track/grabber colours from hud/styles.gd).
+func make_custom_settings_menu_entries() -> Array:
+	var ModConfig = load(MOD_BASE_DIR.path_join("core/mod_config.gd"))
+	var Styles = load(MOD_BASE_DIR.path_join("hud/styles.gd"))
+	if ModConfig == null or Styles == null:
+		return []
+
+	var volume := _read_mod_volume()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+
+	var label := Label.new()
+	label.name = "ModVolumeLabel"
+	label.theme = load(SETTINGS_TEXT_THEME)
+	label.text = _mod_volume_text(volume)
+	box.add_child(label)
+
+	var slider := HSlider.new()
+	slider.name = "ModVolumeSlider"
+	slider.min_value = float(ModConfig.MOD_VOLUME_MIN)
+	slider.max_value = float(ModConfig.MOD_VOLUME_MAX)
+	slider.step = float(SLIDER_STEP)
+	slider.value = float(volume)
+	# The menu treats a VBox row's second child as the navigable control, so the
+	# label must stay first and the slider second.
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(160, 22)
+	slider.tooltip_text = "Volume of the sounds Brain Rot plays."
+	Styles.apply_slider(slider)
+	box.add_child(slider)
+
+	# Text follows the drag; the file is written once on release (or when focus
+	# leaves the slider, which covers gamepad/keyboard changes).
+	slider.value_changed.connect(func(value: float):
+		label.text = _mod_volume_text(int(value)))
+	slider.drag_ended.connect(func(_value_changed: bool):
+		_commit_mod_volume(int(slider.value))
+		_preview_sound())
+	slider.focus_exited.connect(func():
+		_commit_mod_volume(int(slider.value)))
+	slider.tree_exiting.connect(func():
+		_commit_mod_volume(int(slider.value)))
+
+	return [box]
+
+
+func _read_mod_volume() -> int:
+	if _config != null:
+		return _config.mod_volume()
+	return 100
+
+
+## Released, focus-out, and tree-exit all commit; set_mod_volume() clamps and
+## skips the file write when the value did not change, so only the first counts.
+func _commit_mod_volume(value: int) -> void:
+	if _config == null:
+		return
+	_config.set_mod_volume(value)
+
+
+func _mod_volume_text(value: int) -> String:
+	return "Mod Volume: %d%%" % value
+
+
+## Current volume for the sound players, 0-100. Read on every play so moving the
+## slider affects the next sound without rebuilding any player.
+func _current_mod_volume() -> int:
+	if _config != null:
+		return _config.mod_volume()
+	return 100
+
+
+## Play a sound at the newly saved volume so the slider can be judged by ear.
+func _preview_sound() -> void:
+	if _config == null:
+		return
+	if _settings_preview == null:
+		var UiSound = load(MOD_BASE_DIR.path_join("audio/ui_sound.gd"))
+		if UiSound == null:
+			return
+		_settings_preview = UiSound.new()
+		_settings_preview.setup(self, "click.ogg", Callable(), Callable(self, "_current_mod_volume"))
+	_settings_preview.play()
 
 
 ## Play the extra audio for a reaction, if the table has one.

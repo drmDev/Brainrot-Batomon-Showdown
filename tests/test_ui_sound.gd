@@ -50,9 +50,18 @@ func test_over_9000_sound_resolves_and_loads() -> void:
 	host.free()
 
 
-func test_setup_stores_a_custom_volume() -> void:
+func test_volume_callable_is_stored() -> void:
 	var host := Node.new()
 	var sound = UiSound.new()
-	sound.setup(host, "over-9000.ogg", Callable(), -12.0)
-	assert_eq(sound._volume_db, -12.0)
+	var volume := func() -> int: return 40
+	sound.setup(host, "over-9000.ogg", Callable(), volume)
+	assert_true(sound._volume.is_valid())
+	assert_eq(sound._volume.call(), 40)
 	host.free()
+
+
+func test_volume_db_for_maps_percent_to_db() -> void:
+	assert_eq(UiSound.volume_db_for(0.0), UiSound.SILENT_DB)
+	assert_eq(UiSound.volume_db_for(100.0), UiSound.VOLUME_DB)
+	assert_true(UiSound.volume_db_for(50.0) < UiSound.VOLUME_DB)
+	assert_true(UiSound.volume_db_for(50.0) > UiSound.SILENT_DB)

@@ -75,6 +75,7 @@ const ENTRIES := [
 		"title": "BLAZE IT!",
 		"icon": "420",
 		"icon_file": "snoop420.png",
+		"sound": {"file": "420.ogg"},
 		"scopes": [SCOPE_RUN, SCOPE_BATTLE],
 	},
 	{
@@ -116,6 +117,7 @@ const ENTRIES := [
 		"title": "OH YEAH!",
 		"icon": "OY",
 		"species": "monster.name.beetdown",
+		"sound": {"file": "ohYeah.ogg"},
 		"scopes": [SCOPE_RUN],
 	},
 	{

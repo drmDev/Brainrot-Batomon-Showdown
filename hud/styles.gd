@@ -76,3 +76,30 @@ static func make_compact_button_style() -> StyleBoxFlat:
 	style.set_corner_radius_all(PANEL_CORNER_RADIUS)
 	style.set_content_margin_all(1.0)
 	return style
+
+
+## Style an HSlider so it is visible in the Mod Loader's settings panel.
+static func apply_slider(slider: HSlider) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = BG_COLOR
+	track.border_color = BORDER_COLOR
+	track.set_border_width_all(1)
+	track.set_corner_radius_all(2)
+	track.content_margin_top = 5
+	track.content_margin_bottom = 5
+	var filled: StyleBoxFlat = track.duplicate()
+	filled.bg_color = BORDER_COLOR
+	filled.border_color = BORDER_COLOR
+	slider.add_theme_stylebox_override("slider", track)
+	slider.add_theme_stylebox_override("grabber_area", filled)
+	slider.add_theme_stylebox_override("grabber_area_highlight", filled)
+	var grabber := solid_texture(10, 18, BADGE_COLOR)
+	slider.add_theme_icon_override("grabber", grabber)
+	slider.add_theme_icon_override("grabber_highlight", grabber)
+
+
+## A flat one-colour texture, used for the slider grabber.
+static func solid_texture(width: int, height: int, color: Color) -> ImageTexture:
+	var image := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	image.fill(color)
+	return ImageTexture.create_from_image(image)
