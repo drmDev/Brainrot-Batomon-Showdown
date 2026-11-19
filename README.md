@@ -20,5 +20,5 @@ you play and celebrates the moments that deserve a reaction.
 
 ## Settings
 
-- **Mod Volume** — a slider under Settings > Mods that controls the volume of
+- **Mod Volume** a slider under Settings > Mods that controls the volume of
   the sounds this mod plays.
