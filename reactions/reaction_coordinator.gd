@@ -133,9 +133,11 @@ func _sync_occurrences(snapshot: Dictionary) -> void:
 	if key.is_empty() or key == _current_run_key:
 		return
 	_current_run_key = key
+	var record: Dictionary = _store.load()
 	var occ: Dictionary = {}
-	for id in _store.load_fired(key):
-		occ[str(id)] = 1
+	if str(record.get("run_key", "")) == key:
+		for id in record.get("fired", []):
+			occ[str(id)] = 1
 	_evaluator.set_occurrences(occ)
 
 
@@ -143,7 +145,7 @@ func _sync_occurrences(snapshot: Dictionary) -> void:
 func _save_occurrences() -> void:
 	if _store == null or _current_run_key.is_empty() or _evaluator == null:
 		return
-	_store.save_fired(_current_run_key, _evaluator.occurrences().keys())
+	_store.save(_current_run_key, _evaluator.occurrences().keys())
 
 
 ## Show a reaction match exactly as gameplay would, without evaluating rules or

@@ -1,13 +1,14 @@
 extends RefCounted
 ## OccurrenceStore - persists the set of run-scoped reactions that have already
-## fired, keyed by run identity, so once-per-run survives Save & Quit.
+## fired for the single active run, so once-per-run survives Save & Quit.
 ##
-## The evaluator's occurrence tracking is otherwise session-only; this store lets
-## the coordinator restore it after a restart. Each run key maps to the list of
-## reaction ids that fired for that run.
+## Only one run is active at a time, so this holds exactly one record
+## (run_key + fired ids) rather than a growing per-run map.
 
 const STORE_PATH := "user://brain_rot/occurrences.cfg"
 const SECTION := "occurrences"
+const KEY_RUN := "run_key"
+const KEY_FIRED := "fired"
 
 var _store_path := STORE_PATH
 
@@ -17,25 +18,26 @@ func use_store(path: String) -> void:
 	_store_path = path
 
 
-## The fired reaction ids for a run key, or an empty array when none are recorded.
-func load_fired(run_key: String) -> Array:
-	if run_key.is_empty():
-		return []
+## The single persisted record: {"run_key": String, "fired": Array}. Empty when
+## nothing has been saved yet.
+func load() -> Dictionary:
 	var file := ConfigFile.new()
 	if file.load(_store_path) != OK:
-		return []
-	var value = file.get_value(SECTION, run_key, null)
-	if value is Array:
-		return value
-	return []
+		return {}
+	var run_key := str(file.get_value(SECTION, KEY_RUN, ""))
+	var fired = file.get_value(SECTION, KEY_FIRED, [])
+	if not fired is Array:
+		fired = []
+	return {"run_key": run_key, "fired": fired}
 
 
-## Save the fired reaction ids for a run key. An empty array clears the record.
-func save_fired(run_key: String, fired: Array) -> void:
+## Overwrite the single record with the current run's fired ids.
+func save(run_key: String, fired: Array) -> void:
 	if run_key.is_empty():
 		return
 	var file := ConfigFile.new()
 	file.load(_store_path)
-	file.set_value(SECTION, run_key, fired)
+	file.set_value(SECTION, KEY_RUN, run_key)
+	file.set_value(SECTION, KEY_FIRED, fired)
 	DirAccess.make_dir_recursive_absolute(_store_path.get_base_dir())
 	file.save(_store_path)

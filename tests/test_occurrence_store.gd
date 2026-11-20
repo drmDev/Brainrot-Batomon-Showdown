@@ -21,26 +21,26 @@ func _reset() -> void:
 func test_round_trip() -> void:
 	_reset()
 	var store = _store()
-	store.save_fired("run_1", ["six_seven", "over_9000"])
-	assert_eq(store.load_fired("run_1"), ["six_seven", "over_9000"])
+	store.save("run_1", ["six_seven", "over_9000"])
+	assert_eq(store.load(), {"run_key": "run_1", "fired": ["six_seven", "over_9000"]})
 
 
-func test_unknown_key_is_empty() -> void:
+func test_empty_when_no_record() -> void:
 	_reset()
 	var store = _store()
-	assert_empty(store.load_fired("no_such_run"))
+	assert_eq(store.load(), {})
 
 
-func test_empty_array_clears() -> void:
+func test_save_overwrites_previous_run() -> void:
 	_reset()
 	var store = _store()
-	store.save_fired("run_1", ["six_seven"])
-	store.save_fired("run_1", [])
-	assert_empty(store.load_fired("run_1"))
+	store.save("run_1", ["six_seven"])
+	store.save("run_2", ["over_9000"])
+	assert_eq(store.load(), {"run_key": "run_2", "fired": ["over_9000"]})
 
 
 func test_empty_key_is_ignored() -> void:
 	_reset()
 	var store = _store()
-	store.save_fired("", ["six_seven"])
-	assert_empty(store.load_fired(""))
+	store.save("", ["six_seven"])
+	assert_eq(store.load(), {})
