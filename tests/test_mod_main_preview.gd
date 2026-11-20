@@ -4,7 +4,7 @@ extends "test_runner.gd"
 ## The preview uses the same ReactionPlayer as gameplay, so it must render text,
 ## submit a toast, and forward the reaction sound identically.
 
-const ModMain = preload("../mod_main.gd")
+const ReactionCoordinator = preload("../reactions/reaction_coordinator.gd")
 const ReactionPlayer = preload("../reactions/reaction_player.gd")
 const ReactionSounds = preload("../audio/reaction_sounds.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
@@ -30,7 +30,7 @@ class FakeHost:
 
 
 func _preview(match: Dictionary):
-	var mod = ModMain.new()
+	var coord = ReactionCoordinator.new()
 	var sounds = FakeSoundRegistry.new()
 	var host = FakeHost.new()
 	var player = ReactionPlayer.new(
@@ -39,11 +39,9 @@ func _preview(match: Dictionary):
 		func(id): sounds.play_for(id),
 		Callable(),
 	)
-	mod._reaction_sounds = sounds
-	mod._reaction_player = player
-	mod._notification_host = host
-	mod._preview_toast(match)
-	return {"mod": mod, "sounds": sounds, "host": host}
+	coord._player = player
+	coord.play_preview(match)
+	return {"coord": coord, "sounds": sounds, "host": host}
 
 
 func test_preview_over_9000_plays_sound_and_submits_toast() -> void:
@@ -55,7 +53,6 @@ func test_preview_over_9000_plays_sound_and_submits_toast() -> void:
 	})
 	assert_eq(result["sounds"].played, [Catalog.OVER_9000])
 	assert_eq(result["host"].submitted.size(), 1)
-	result["mod"].free()
 
 
 func test_preview_other_reaction_stays_silent_but_submits_toast() -> void:
@@ -66,17 +63,15 @@ func test_preview_other_reaction_stays_silent_but_submits_toast() -> void:
 	})
 	assert_empty(result["sounds"].played)
 	assert_eq(result["host"].submitted.size(), 1)
-	result["mod"].free()
 
 
 func test_reaction_sound_mapping_is_table_driven() -> void:
-	var mod = ModMain.new()
+	var coord = ReactionCoordinator.new()
 	var sounds = FakeSoundRegistry.new()
-	mod._reaction_sounds = sounds
-	mod._play_reaction_sound(Catalog.OVER_9000)
-	mod._play_reaction_sound(Catalog.SIX_NINE)
+	coord._sounds = sounds
+	coord._play_sound(Catalog.OVER_9000)
+	coord._play_sound(Catalog.SIX_NINE)
 	assert_eq(
 		sounds.played,
 		[Catalog.OVER_9000],
 	)
-	mod.free()

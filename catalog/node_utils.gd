@@ -1,16 +1,31 @@
 extends RefCounted
 ## Scene-tree reflection helpers shared by the mod's modules.
 ##
-## Adapted from Creature Comforts (core/node_utils.gd). Only the helpers the
-## species icon provider needs are kept: has_property and get_autoload. Brain Rot
-## stays standalone, so this is a copy, not a runtime dependency.
+## Adapted from Creature Comforts (core/node_utils.gd). Brain Rot stays
+## standalone, so this is a copy, not a runtime dependency.
 
-## True when `obj` is a valid instance that exposes `property`.
+## True when `obj` exposes `property`. Handles both Objects and Dictionaries.
 ## `in` is O(1) and avoids allocating the full property list on every call.
 static func has_property(obj, property: String) -> bool:
+	if obj == null:
+		return false
+	if obj is Dictionary:
+		return obj.has(property)
 	if not is_instance_valid(obj):
 		return false
 	return property in obj
+
+
+## True when `obj`'s script (or any base script) is `script_path`.
+static func script_is(obj, script_path: String) -> bool:
+	if not is_instance_valid(obj):
+		return false
+	var script: Script = obj.get_script()
+	while script != null:
+		if str(script.resource_path) == script_path:
+			return true
+		script = script.get_base_script()
+	return false
 
 
 ## The SceneTree root, or null outside an active scene tree (a headless
