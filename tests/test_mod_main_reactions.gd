@@ -9,6 +9,7 @@ extends "test_runner.gd"
 
 const ReactionCoordinator = preload("../reactions/reaction_coordinator.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
+const OccurrenceStore = preload("../core/occurrence_store.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 const SIX_SEVEN := Catalog.SIX_SEVEN
@@ -41,6 +42,13 @@ func _snap(lives: int, day: int, wins: int) -> Dictionary:
 		"current_round": day,
 		"current_wins": wins,
 	}
+
+
+## Run snapshot with an explicit run_id (for persistence tests).
+func _snap_with_run(run_id: String, lives: int, day: int, wins: int) -> Dictionary:
+	var snap := _snap(lives, day, wins)
+	snap["run_id"] = run_id
+	return snap
 
 
 func _ids(reactions: Array) -> Array:
@@ -104,3 +112,32 @@ func test_wins_path_also_defers_to_shop() -> void:
 	assert_empty(coord._player.played)
 	coord.poll_reactions(_snap(6, 1, 7), true)
 	assert_eq(_ids(coord._player.played), [SIX_SEVEN])
+
+
+func test_persistence_prevents_retrigger_after_restart() -> void:
+	# A reaction that fired in a prior session must not re-fire after Save & Quit.
+	var path := "user://brain_rot_test/coord_occurrences.cfg"
+	var abs := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(abs)
+
+	var store = OccurrenceStore.new()
+	store.use_store(path)
+
+	# First session: the reaction fires and is persisted under the run id.
+	var coord1 = ReactionCoordinator.new()
+	coord1._store = store
+	coord1._evaluator = ReactionEvaluator.new()
+	coord1._player = FakePlayer.new()
+	coord1.poll_reactions(_snap_with_run("run_1", 6, 7, 0), true)
+	assert_eq(_ids(coord1._player.played), [SIX_SEVEN])
+
+	# Second session (restart): same run id, so the reaction must stay silent.
+	var coord2 = ReactionCoordinator.new()
+	coord2._store = store
+	coord2._evaluator = ReactionEvaluator.new()
+	coord2._player = FakePlayer.new()
+	coord2.poll_reactions(_snap_with_run("run_1", 6, 7, 0), true)
+	assert_empty(coord2._player.played)
+
+	DirAccess.remove_absolute(abs)

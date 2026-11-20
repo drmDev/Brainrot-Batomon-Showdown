@@ -33,8 +33,9 @@ extends RefCounted
 ##   matches to a species via its `species` key (Big Dog is Cinnabark-only).
 ## - An empty snapshot does NOT reset anything.
 ##
-## LIMITATION: occurrence tracking is session-only. Restarting the game or the mod
-## can allow a reaction to trigger again within a continuing run.
+## Persistence: the run-scoped occurrence set can be restored via set_occurrences()
+## and read back via occurrences(); the coordinator persists it keyed by run identity
+## (core/occurrence_store.gd) so once-per-run survives Save & Quit.
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
@@ -164,6 +165,16 @@ func poll_buff(previous_run: Dictionary, current_run: Dictionary) -> Array:
 func reset_run() -> void:
 	_occurrences.clear()
 	_battle_fired.clear()
+
+
+## Replace the run-scoped occurrence set (used to restore persisted state).
+func set_occurrences(occ: Dictionary) -> void:
+	_occurrences = occ
+
+
+## The current run-scoped occurrence set (for persisting).
+func occurrences() -> Dictionary:
+	return _occurrences
 
 
 ## Clear battle-scoped tracking. Call when entering a new battle.

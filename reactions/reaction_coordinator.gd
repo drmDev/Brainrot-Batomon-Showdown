@@ -7,6 +7,7 @@ extends RefCounted
 
 const MOD_BASE_DIR := "res://mods/BrainRot"
 const ModLogger = preload("../core/mod_logger.gd")
+const OccurrenceStore = preload("../core/occurrence_store.gd")
 
 var _logger = ModLogger.new()
 var _evaluator = null
@@ -15,6 +16,8 @@ var _sounds = null
 var _species_icons = null
 var _last_shop_snapshot: Dictionary = {}
 var _run_reaction_gate_state := ""
+var _store = null
+var _current_run_key := ""
 
 
 ## Build the evaluator, sounds, species icons, and player. `host` owns the audio
@@ -22,6 +25,7 @@ var _run_reaction_gate_state := ""
 ## `volume` is the current Mod Volume provider.
 func setup(host: Node, logger, submit_notification: Callable, volume: Callable) -> void:
 	_logger = logger
+	_store = OccurrenceStore.new()
 
 	var ReactionEvaluator = load(MOD_BASE_DIR.path_join("reactions/reaction_evaluator.gd"))
 	_evaluator = ReactionEvaluator.new()
@@ -59,14 +63,20 @@ func _play_sound(id: String) -> void:
 func poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 	if _evaluator == null or _player == null:
 		return
+	_sync_occurrences(run_snapshot)
 	_note_run_reaction_gate(is_shop)
 	if not is_shop:
 		_last_shop_snapshot = {}
 		return
-	_player.play_all(_evaluator.poll(run_snapshot))
-	_player.play_all(_evaluator.poll_sold(_last_shop_snapshot, run_snapshot))
-	_player.play_all(_evaluator.poll_buff(_last_shop_snapshot, run_snapshot))
+	var run_matches: Array = _evaluator.poll(run_snapshot)
+	var sold_matches: Array = _evaluator.poll_sold(_last_shop_snapshot, run_snapshot)
+	var buff_matches: Array = _evaluator.poll_buff(_last_shop_snapshot, run_snapshot)
+	_player.play_all(run_matches)
+	_player.play_all(sold_matches)
+	_player.play_all(buff_matches)
 	_last_shop_snapshot = run_snapshot
+	if not run_matches.is_empty() or not sold_matches.is_empty() or not buff_matches.is_empty():
+		_save_occurrences()
 
 
 ## Log the run-reaction phase gate only when it changes, so the first real session
@@ -96,12 +106,44 @@ func reset_run() -> void:
 	_last_shop_snapshot = {}
 	if _evaluator != null:
 		_evaluator.reset_run()
+	_save_occurrences()
+	_current_run_key = ""
 
 
 ## Reset battle-scoped reaction tracking.
 func reset_battle() -> void:
 	if _evaluator != null:
 		_evaluator.reset_battle()
+
+
+## The run identity used to key persisted occurrences: run_id when present,
+## otherwise trainer_id (stable within a run).
+func _run_key(snapshot: Dictionary) -> String:
+	var run_id := str(snapshot.get("run_id", ""))
+	if not run_id.is_empty():
+		return run_id
+	return str(snapshot.get("trainer_id", ""))
+
+
+## Restore the persisted occurrence set when the run identity changes.
+func _sync_occurrences(snapshot: Dictionary) -> void:
+	if _evaluator == null or _store == null:
+		return
+	var key := _run_key(snapshot)
+	if key.is_empty() or key == _current_run_key:
+		return
+	_current_run_key = key
+	var occ: Dictionary = {}
+	for id in _store.load_fired(key):
+		occ[str(id)] = 1
+	_evaluator.set_occurrences(occ)
+
+
+## Persist the current occurrence set for the current run.
+func _save_occurrences() -> void:
+	if _store == null or _current_run_key.is_empty() or _evaluator == null:
+		return
+	_store.save_fired(_current_run_key, _evaluator.occurrences().keys())
 
 
 ## Show a reaction match exactly as gameplay would, without evaluating rules or
