@@ -1115,6 +1115,20 @@ func test_harambe_ignores_empty_snapshots() -> void:
 	assert_empty(_new_evaluator().poll_sold({}, {}))
 
 
+func test_harambe_does_not_trigger_on_combine_level_up() -> void:
+	# Buying a third Sarudo combines three level-1 Sarudos into one level-2, which
+	# also drops the count. That is a level-up, not a sell.
+	var evaluator = _new_evaluator()
+	var previous := _run_with("twins", [
+		{"name_key": "monster.name.sarudo", "level": 1},
+		{"name_key": "monster.name.sarudo", "level": 1},
+	])
+	var current := _run_with("twins", [
+		{"name_key": "monster.name.sarudo", "level": 2},
+	])
+	assert_empty(evaluator.poll_sold(previous, current))
+
+
 func test_converted_reactions_fire_once_per_run() -> void:
 	var evaluator = _new_evaluator()
 	var snapshot := _run_day(TWINS, 3, [_monster(BEETDOWN, 3)])

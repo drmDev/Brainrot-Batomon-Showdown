@@ -410,13 +410,19 @@ static func _double_rainbow_match(snapshot: Dictionary) -> Dictionary:
 	return {}
 
 
-## HARAMBE: a Sarudo disappeared from team/bench between two shop snapshots.
+## HARAMBE: a Sarudo was sold between two shop snapshots.
+##
+## A raw count drop is not enough: buying a third Sarudo combines three into one
+## higher-level Sarudo, which also reduces the count. Only treat it as a sell when
+## the max Sarudo level did not increase (a combine always raises the max level).
 static func sold_match(previous: Dictionary, current: Dictionary) -> Dictionary:
 	if previous.is_empty() or current.is_empty():
 		return {}
-	if _count_species(previous, "monster.name.sarudo") > _count_species(current, "monster.name.sarudo"):
-		return {"case": "sold", "params": {}}
-	return {}
+	if _count_species(previous, "monster.name.sarudo") <= _count_species(current, "monster.name.sarudo"):
+		return {}
+	if _max_species_level(current, "monster.name.sarudo") > _max_species_level(previous, "monster.name.sarudo"):
+		return {}
+	return {"case": "sold", "params": {}}
 
 
 ## TETSUO: a Tengusto gained a Poison or Shock permanent buff between two shop
@@ -467,6 +473,24 @@ static func _count_species(snapshot: Dictionary, species_key: String) -> int:
 			if monster is Dictionary and str(monster.get("name_key", "")) == species_key:
 				count += 1
 	return count
+
+
+## Highest level among team/bench monsters with `species_key` (0 when none).
+static func _max_species_level(snapshot: Dictionary, species_key: String) -> int:
+	var max_level := 0
+	for list_name in ["team", "bench"]:
+		var list = snapshot.get(list_name)
+		if not list is Array:
+			continue
+		for monster in list:
+			if not monster is Dictionary:
+				continue
+			if str(monster.get("name_key", "")) != species_key:
+				continue
+			var level = monster.get("level")
+			if typeof(level) == TYPE_INT and int(level) > max_level:
+				max_level = int(level)
+	return max_level
 
 
 ## Team/bench contains `species_key` at `level_required` (or any level when -1).
