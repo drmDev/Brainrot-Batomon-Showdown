@@ -14,7 +14,7 @@ const KIND_REACTION := "reaction"
 
 const HEADER_UNLOCKED := "BRAIN ROT UNLOCKED"
 
-const DEFAULT_DURATION_MS := 6000
+const DEFAULT_DURATION_MS := 5000
 
 var kind := ""
 var event_key := ""
