@@ -234,6 +234,33 @@ func test_current_files_skips_tests_and_docs() -> void:
 		assert_false(str(f).begins_with("tests/"), "tests are not managed: %s" % f)
 
 
+func test_every_shipped_gd_file_is_managed() -> void:
+	# Every .gd file outside tests/ must be recognized by path_ok(), otherwise the
+	# auto-updater would not ship it and a fresh install would fail to load it.
+	var dir := ProjectSettings.globalize_path("res://")
+	for rel in _all_gd_files(dir):
+		if str(rel).begins_with("tests/"):
+			continue
+		assert_true(AutoUpdater.path_ok(str(rel)), "unmanaged .gd file: %s" % rel)
+
+
+## Every .gd file under `dir`, as relative paths with forward slashes.
+func _all_gd_files(dir: String) -> Array:
+	var out: Array = []
+	_collect_gd(dir, "", out)
+	return out
+
+
+func _collect_gd(dir: String, rel: String, out: Array) -> void:
+	var abs := dir if rel == "" else dir.path_join(rel)
+	for f in DirAccess.get_files_at(abs):
+		if str(f).get_extension().to_lower() == "gd":
+			out.append(str(f) if rel == "" else rel + "/" + str(f))
+	for d in DirAccess.get_directories_at(abs):
+		var child := str(d) if rel == "" else rel + "/" + str(d)
+		_collect_gd(dir, child, out)
+
+
 func _release_node() -> void:
 	if _updater != null:
 		_updater.free()
