@@ -33,6 +33,7 @@ const TAB_LABELS := ["High Scores", "Cheevos"]
 # content, so the tabs never overlap the table/list below them.
 const TAB_BAR_H := 12.0
 const TAB_GAP := 2.0
+const TAB_PADDING_X := 12.0
 
 # Cheevos list layout. The list is a fixed window of rows; scrolling shifts the
 # window over the full catalog rather than clipping pixels.
@@ -116,14 +117,10 @@ func _build_tab_buttons() -> void:
 		b.add_theme_color_override("font_hover_color", TITLE_COLOR)
 		b.add_theme_color_override("font_pressed_color", BG_COLOR)
 		b.add_theme_color_override("font_hover_pressed_color", BG_COLOR)
-		b.pressed.connect(_on_tab_button_pressed.bind(i))
+		b.pressed.connect(set_tab.bind(i))
 		add_child(b)
 		_tab_buttons.append(b)
 	_sync_tab_buttons()
-
-
-func _on_tab_button_pressed(index: int) -> void:
-	set_tab(index)
 
 
 ## Keep the toggle states and visibility in sync with the active tab and the
@@ -144,7 +141,7 @@ func _layout_tab_buttons() -> void:
 	var y := r.position.y + TITLE_H + POPUP_PADDING
 	for i in range(_tab_buttons.size()):
 		var b: Button = _tab_buttons[i]
-		var width := _text_font.get_string_size(TAB_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x + 12.0
+		var width := _text_font.get_string_size(TAB_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x + TAB_PADDING_X
 		b.position = Vector2(x, y)
 		b.size = Vector2(width, TAB_BAR_H)
 		x += width + TAB_GAP
@@ -177,14 +174,6 @@ func _table_column_fractions() -> Array:
 
 func _table_header_labels() -> Array:
 	return HEADER_LABELS
-
-
-func _table_header_color(_column: int) -> Color:
-	return HEADER_COLOR
-
-
-func _table_current_row() -> int:
-	return -1
 
 
 func _table_cell_text(row_index: int, column: int) -> String:
@@ -248,23 +237,23 @@ func _draw_cell(cell_rect: Rect2, row: int, column: int, color: Color) -> void:
 ## The popup height is constant across tabs: the larger of the High Scores table
 ## and the Cheevos visible window, so switching tabs never resizes the popup.
 func _popup_height() -> float:
-	var high_scores_h := TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP \
-		+ HEADER_ROW_H + HEADER_GAP + _table_row_count() * ROW_H + POPUP_PADDING
-	var cheevos_h := TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP \
-		+ CHEEVO_VISIBLE_ROWS * ROW_H + POPUP_PADDING
+	var top := TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
+	var high_scores_h := top + HEADER_ROW_H + HEADER_GAP + _table_row_count() * ROW_H + POPUP_PADDING
+	var cheevos_h := top + CHEEVO_VISIBLE_ROWS * ROW_H + POPUP_PADDING
 	return maxf(high_scores_h, cheevos_h)
 
 
 func _draw_content(rect: Rect2) -> void:
+	var content := _content_rect(rect)
 	if _tab == TAB_CHEEVOS:
-		_draw_cheevos(rect)
+		_draw_cheevos(content)
 	else:
-		_draw_table(_content_rect(rect))
+		_draw_table(content)
 
 
-## The High Scores table rect: offset by the tab row only, because the table's
-## own drawing adds TITLE_H + POPUP_PADDING for its header. This keeps the table
-## header directly below the tabs instead of double-offsetting it.
+## The content rect below the tab row. The table's own drawing adds
+## TITLE_H + POPUP_PADDING for its header, so this offsets by the tab row only;
+## both tabs draw into the same rect and stay aligned under the buttons.
 func _content_rect(rect: Rect2) -> Rect2:
 	return Rect2(
 		rect.position + Vector2(0.0, TAB_BAR_H + TAB_GAP),
@@ -292,11 +281,8 @@ func _max_scroll_offset() -> int:
 ## list display is normalized.
 func _cheevo_display_title(entry: Dictionary) -> String:
 	var title := str(entry.get("title", ""))
-	var words := title.split(" ", false)
 	var parts: PackedStringArray = []
-	for word in words:
-		if word.is_empty():
-			continue
+	for word in title.split(" ", false):
 		parts.append(word.substr(0, 1).to_upper() + word.substr(1).to_lower())
 	return " ".join(parts)
 
@@ -306,7 +292,9 @@ func _cheevo_display_title(entry: Dictionary) -> String:
 func _draw_cheevos(rect: Rect2) -> void:
 	var inner_left := rect.position.x + POPUP_PADDING
 	var inner_w := rect.size.x - POPUP_PADDING * 2.0
-	var row_y := rect.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
+	var row_y := rect.position.y + TITLE_H + POPUP_PADDING
+	var text_x := inner_left + CHEEVO_CHECKBOX_SIZE + CHEEVO_CHECKBOX_GAP
+	var text_w := inner_w - CHEEVO_CHECKBOX_SIZE - CHEEVO_CHECKBOX_GAP
 
 	var entries := _cheevo_entries()
 	for i in range(CHEEVO_VISIBLE_ROWS):
@@ -321,8 +309,6 @@ func _draw_cheevos(rect: Rect2) -> void:
 			Vector2(CHEEVO_CHECKBOX_SIZE, CHEEVO_CHECKBOX_SIZE))
 		draw_rect(box_rect, BORDER_COLOR, false, 1.0)
 
-		var text_x := inner_left + CHEEVO_CHECKBOX_SIZE + CHEEVO_CHECKBOX_GAP
-		var text_w := inner_w - CHEEVO_CHECKBOX_SIZE - CHEEVO_CHECKBOX_GAP
 		_draw_text_shadow(
 			Vector2(text_x, row_y + ROW_H - TEXT_BASELINE_OFFSET),
 			title, DESCRIPTION_COLOR, BODY_FONT_SIZE,
