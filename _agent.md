@@ -67,6 +67,16 @@ positioned to the left of Creature Comforts' Replay Battle button position
 (RIGHT_RATIO 0.80, TOP_RATIO 0.05). Close it with the X box, by clicking outside
 the popup, or with Escape.
 
+The Memories panel has two tabs, defaulting to High Scores on every open. The
+tabs are real toggle `Button` children styled like the Creature Comforts
+Watchlist's compact buttons (navy/gold chrome; the active tab is gold-filled).
+
+- **High Scores** — the best single-unit value per battle metric, with the unit
+  that set each record (the original table).
+- **Cheevos** — a scrollable list of every registered Reaction title, read from
+  `catalog/brain_rot_catalog.gd`'s `reactions()` in catalog order. It is a fixed
+  visible window (mouse wheel scrolls); the popup height is constant across tabs.
+
 ## UI Sizing and Theme Overrides
 Godot's default control theme is sized for menus, not the mod's compact toast/HUD
 scale. Native `Label`, `Button`, and `OptionButton` controls render with large
@@ -121,7 +131,7 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/panel_icons.gd` | Shared loader/drawer for loose mod icons (close box). |
 | `hud/shop_modal_panel.gd` | Shared shop icon-button modal scaffolding (button, frame, close box, click-outside/Escape close). |
 | `hud/table_modal_panel.gd` | Shared row-table layout for shop modals. |
-| `hud/memories_panel.gd` | The shop's Brain Rot Memories high-score modal (rainbow brain button). |
+| `hud/memories_panel.gd` | The shop's Brain Rot Memories modal (rainbow brain button): a High Scores table plus a Cheevos list of registered Reaction titles. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
 | `audio/reaction_sounds.gd` | Reaction audio derived from each catalog entry's `sound` block; lazy per-file players. |
 | `battle/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
