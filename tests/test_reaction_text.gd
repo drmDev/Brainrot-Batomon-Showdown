@@ -88,6 +88,16 @@ func test_placeholders_reports_used_tokens() -> void:
 	assert_empty(ReactionText.placeholders("apes_together", "owned"))
 
 
+func test_every_reaction_has_an_authored_hint() -> void:
+	for entry in Catalog.reactions():
+		var id := str(entry.get("id", ""))
+		assert_false(ReactionText.hint_for(id).is_empty(), "missing hint for " + id)
+
+
+func test_hint_for_unknown_id_is_empty() -> void:
+	assert_eq(ReactionText.hint_for("does_not_exist"), "")
+
+
 func test_missing_case_falls_back_to_title() -> void:
 	assert_eq(
 		ReactionText.render("six_seven", "does_not_exist", {}),

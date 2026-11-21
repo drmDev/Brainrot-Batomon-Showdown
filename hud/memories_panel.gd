@@ -70,6 +70,7 @@ var _scroll_offset := 0
 var _tab_buttons: Array = []
 var _completed_only := false
 var _completed_checkbox: CheckBox
+var _italic_font: SystemFont
 
 
 func _init() -> void:
@@ -461,7 +462,23 @@ func _draw_cheevos(rect: Rect2) -> void:
 					Vector2(text_x, row_y + CHEEVO_ROW_H - TEXT_BASELINE_OFFSET),
 					desc, DESCRIPTION_COLOR, CHEEVO_DESC_FONT_SIZE,
 					HORIZONTAL_ALIGNMENT_LEFT, text_w)
+		else:
+			var hint := ReactionText.hint_for(id)
+			if not hint.is_empty():
+				_draw_hint_text(
+					Vector2(text_x, row_y + CHEEVO_ROW_H - TEXT_BASELINE_OFFSET),
+					hint, text_w)
 		row_y += CHEEVO_ROW_H
+
+
+## Draw an undiscovered row's teaser in italic. The italic font is a SystemFont
+## variation built once; it falls back to the normal font where italic is missing.
+func _draw_hint_text(pos: Vector2, text: String, width: float) -> void:
+	if _italic_font == null:
+		_italic_font = Styles.make_font()
+		_italic_font.italic = true
+	draw_string(_italic_font, pos + Vector2(0.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, width, CHEEVO_DESC_FONT_SIZE, Color(0.0, 0.0, 0.0, 0.8))
+	draw_string(_italic_font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, width, CHEEVO_DESC_FONT_SIZE, CHEEVO_DIM_COLOR)
 
 
 ## Draw a white checkmark inside a filled checkbox.

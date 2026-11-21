@@ -101,6 +101,26 @@ const DESCRIPTIONS := {
 	"tetsuo": "Give a Tengusto a Poison or Shock permanent buff.",
 }
 
+## Italic teaser shown on the Cheevos tab for undiscovered reactions. Amount-based
+## reactions stay vague; trainer- or unit-specific ones name the requirement. Hints
+## never state the exact number or the full unlock condition.
+const HINTS := {
+	"six_seven": "Hit this combination or amount somewhere...",
+	"six_nine": "Hit this amount somewhere...",
+	"four_twenty": "Hit this amount somewhere...",
+	"six_six_six": "Hit this amount somewhere...",
+	"over_9000": "Hit this amount somewhere...",
+	"apes_together": "Requires Twins trainer...",
+	"big_dog_best_dog": "A good boy with a very large shield...",
+	"oh_yeah": "Requires Beetdown...",
+	"herd_u_liek_mudkipz": "Requires Dewlotl...",
+	"double_rainbow": "Twins and a rainbow of shine...",
+	"harambe": "Requires something with Sarudo...",
+	"trogdor": "Requires Furnadon...",
+	"not_the_bees": "Requires Bumblebolt...",
+	"tetsuo": "Requires something with Tengusto...",
+}
+
 ## Battle metric label -> the word used in templates.
 const METRIC_WORDS := {
 	"damage": "damage",
@@ -115,6 +135,11 @@ const METRIC_WORDS := {
 ## The unlock-condition description for a reaction, or "" when unknown.
 static func description_for(id: String) -> String:
 	return str(DESCRIPTIONS.get(id, ""))
+
+
+## The undiscovered-row teaser for a reaction, or "" when unknown.
+static func hint_for(id: String) -> String:
+	return str(HINTS.get(id, ""))
 
 
 ## Case names registered for a reaction, in TEMPLATES order.

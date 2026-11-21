@@ -71,6 +71,13 @@ reaction actually triggers (the dev preview never records). The Memories panel
 reads the same store for its Cheevos "X of Y" progress.
 
 ## Shop HUD
+Cheevos rows: completed reactions show their unlock description
+(`ReactionText.DESCRIPTIONS`) in small text; incomplete reactions show a dim
+italic teaser (`ReactionText.HINTS`) instead. Teasers are deliberately vague for
+amount-based reactions and name the trainer or unit for species-specific ones,
+but never state the exact number. This overrides the earlier "titles only" spec.
+Every reaction must have an authored hint; a unit test enforces it.
+
 The rainbow brain button in the shop opens the Brain Rot Memories panel. It is
 positioned to the left of Creature Comforts' Replay Battle button position
 (RIGHT_RATIO 0.80, TOP_RATIO 0.05). Close it with the X box, by clicking outside
