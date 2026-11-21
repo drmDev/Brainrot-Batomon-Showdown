@@ -10,6 +10,7 @@ extends "test_runner.gd"
 const ReactionCoordinator = preload("../reactions/reaction_coordinator.gd")
 const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const OccurrenceStore = preload("../core/occurrence_store.gd")
+const AchievementStore = preload("../core/achievement_store.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 const SIX_SEVEN := Catalog.SIX_SEVEN
@@ -24,6 +25,9 @@ class FakePlayer:
 	func play_all(reactions: Array) -> void:
 		for reaction in reactions:
 			played.append(reaction)
+
+	func play(_match, _preview := false) -> void:
+		pass
 
 
 ## A coordinator with the reaction systems wired to fakes; no tree, log, or toasts.
@@ -140,4 +144,42 @@ func test_persistence_prevents_retrigger_after_restart() -> void:
 	coord2.poll_reactions(_snap_with_run("run_1", 6, 7, 0), true)
 	assert_empty(coord2._player.played)
 
+	DirAccess.remove_absolute(abs)
+
+
+# --- achievements: recorded on real triggers, never on preview ---
+
+func test_preview_does_not_record_achievements() -> void:
+	# The dev preview renders a match exactly like gameplay but must never touch
+	# progress or saves, so the achievements store stays unchanged.
+	var coord = _new_coordinator()
+	var store := AchievementStore.empty_store()
+	coord.set_achievements(store)
+	coord.play_preview({"id": SIX_SEVEN, "case": "lives_wins", "params": {}})
+	assert_eq(AchievementStore.earned_count(coord.achievements()), 0)
+	assert_eq(AchievementStore.earned_count(store), 0)
+
+
+func test_poll_records_achievement_once_per_run() -> void:
+	# A real occurrence store is needed so _sync_occurrences sets the run key.
+	var path := "user://brain_rot_test/coord_achievements.cfg"
+	var abs := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(abs)
+	var occ = OccurrenceStore.new()
+	occ.use_store(path)
+
+	var coord = _new_coordinator()
+	coord._store = occ
+	var store := AchievementStore.empty_store()
+	coord.set_achievements(store)
+	coord.poll_reactions(_snap_with_run("run_1", 6, 7, 0), true)
+	assert_eq(AchievementStore.earned_count(store), 1)
+	# A new run with the same reaction increments the run count.
+	coord.reset_run()
+	coord.poll_reactions(_snap_with_run("run_2", 6, 7, 0), true)
+	var reactions: Dictionary = store.get("reactions", {})
+	var entry: Dictionary = reactions.get(SIX_SEVEN, {})
+	assert_eq(int(entry.get("runs", 0)), 2)
+	assert_eq(str(entry.get("first_run", "")), "run_1")
 	DirAccess.remove_absolute(abs)

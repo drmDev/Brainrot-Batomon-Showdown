@@ -3,6 +3,7 @@ extends "test_runner.gd"
 
 const MemoriesPanel = preload("../hud/memories_panel.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
+const ReactionText = preload("../catalog/reaction_text.gd")
 
 
 func _panel():
@@ -163,3 +164,79 @@ func test_content_rect_offsets_by_tab_row_only() -> void:
 	assert_eq(content.position.y, r.position.y + MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP)
 	assert_eq(content.size.y, r.size.y - MemoriesPanel.TAB_BAR_H - MemoriesPanel.TAB_GAP)
 	panel.free()
+
+
+func test_content_rect_includes_filter_row_on_cheevos_tab() -> void:
+	var panel = _panel()
+	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
+	var r := Rect2(Vector2(10, 20), Vector2(320, 200))
+	var content := panel._content_rect(r)
+	var expected := MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP + MemoriesPanel.FILTER_BAR_H + MemoriesPanel.FILTER_GAP
+	assert_eq(content.position.y, r.position.y + expected)
+	assert_eq(content.size.y, r.size.y - expected)
+	panel.free()
+
+
+func test_cheevos_progress_label_counts_earned() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "big_dog_best_dog": {}}})
+	var expected := "2 of %d" % panel._cheevo_entries().size()
+	assert_eq(panel._cheevos_progress_label(), expected)
+	panel.free()
+
+
+func test_cheevos_progress_label_starts_at_zero() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {}})
+	var expected := "0 of %d" % panel._cheevo_entries().size()
+	assert_eq(panel._cheevos_progress_label(), expected)
+	panel.free()
+
+
+func test_is_earned_reflects_store() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}}})
+	assert_true(panel._is_earned("over_9000"))
+	assert_false(panel._is_earned("big_dog_best_dog"))
+	panel.free()
+
+
+func test_visible_cheevo_entries_filter_by_mode() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}}})
+	# Unchecked (default): all reactions, completed first.
+	assert_eq(panel._visible_cheevo_entries().size(), panel._cheevo_entries().size())
+	# Checked: only completed reactions.
+	panel._completed_only = true
+	var done := panel._visible_cheevo_entries()
+	assert_eq(done.size(), 1)
+	assert_eq(str(done[0].get("id", "")), "over_9000")
+	panel.free()
+
+
+func test_completed_checkbox_toggles_view() -> void:
+	var panel = _panel()
+	assert_false(panel._completed_only)
+	panel._on_completed_checkbox_toggled(true)
+	assert_true(panel._completed_only)
+	panel._on_completed_checkbox_toggled(false)
+	assert_false(panel._completed_only)
+	panel.free()
+
+
+func test_all_filter_sorts_completed_first() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "six_seven": {}}})
+	var entries = panel._visible_cheevo_entries()
+	# Catalog order: six_seven, six_nine, four_twenty, six_six_six, over_9000, ...
+	# Earned (six_seven, over_9000) come first, in catalog order.
+	assert_eq(str(entries[0].get("id", "")), "six_seven")
+	assert_eq(str(entries[1].get("id", "")), "over_9000")
+	assert_eq(str(entries[2].get("id", "")), "six_nine")
+	panel.free()
+
+
+func test_cheevo_description_for_known_and_unknown() -> void:
+	assert_eq(ReactionText.description_for("over_9000"), "Reach over 9000 shop income.")
+	assert_eq(ReactionText.description_for("big_dog_best_dog"), "Put up over 1,000,000 shield with a Cinnabark.")
+	assert_eq(ReactionText.description_for("nope"), "")

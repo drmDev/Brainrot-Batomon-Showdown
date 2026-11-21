@@ -61,6 +61,15 @@ plus the unit that set it. It is global across runs, updated once per completed
 battle, and written only when a metric improves. The Brain Rot Memories shop
 panel reads the same store.
 
+Earned reactions (cheevos) live in `user://brain_rot/achievements.json`:
+`{"version": 1, "reactions": {"<id>": {"first_date": "MM/DD/YY", "first_run": "<run_id>", "runs": int, "last_run": "<run_id>"}}}`.
+`first_date`/`first_run` are set once on the first earn; `runs` counts the runs
+in which the reaction fired, incrementing at most once per run key (`last_run`
+tracks the most recent run). The store is global across runs, written only when
+it changes, and is recorded by `reactions/reaction_coordinator.gd` when a
+reaction actually triggers (the dev preview never records). The Memories panel
+reads the same store for its Cheevos "X of Y" progress.
+
 ## Shop HUD
 The rainbow brain button in the shop opens the Brain Rot Memories panel. It is
 positioned to the left of Creature Comforts' Replay Battle button position
@@ -131,17 +140,18 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/panel_icons.gd` | Shared loader/drawer for loose mod icons (close box). |
 | `hud/shop_modal_panel.gd` | Shared shop icon-button modal scaffolding (button, frame, close box, click-outside/Escape close). |
 | `hud/table_modal_panel.gd` | Shared row-table layout for shop modals. |
-| `hud/memories_panel.gd` | The shop's Brain Rot Memories modal (rainbow brain button): a High Scores table plus a Cheevos list of registered Reaction titles. |
+| `hud/memories_panel.gd` | The shop's Brain Rot Memories modal (rainbow brain button): a High Scores table plus a Cheevos list of registered Reaction titles with an "X of Y" progress label. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
 | `audio/reaction_sounds.gd` | Reaction audio derived from each catalog entry's `sound` block; lazy per-file players. |
 | `battle/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |
 | `battle/high_scores.gd` | Persistent per-metric best single-unit battle values (`user://brain_rot/high_scores.json`); pure parse/serialize/record helpers plus display formatting. |
+| `core/achievement_store.gd` | Persistent earned-reaction records (`user://brain_rot/achievements.json`): first earned date/run plus a per-run count; pure parse/serialize/record helpers. |
 | `catalog/brain_rot_catalog.gd` | The single source of truth for reaction detection metadata: `ENTRIES` (kind, id, title, optional icon/species/scopes/sound), run-scoped `run_match()`, and battle rules. No user text. |
 | `catalog/reaction_text.gd` | The single source of user-facing reaction wording: `TEMPLATES` (id -> case -> template), placeholder filling, species-name and number formatting. Detection never produces text. |
 | `reactions/reaction_evaluator.gd` | Rules only: calls the catalog's reaction checks from snapshots and owns occurrence tracking plus the battle lowest-slot / metric-order tie-break. `poll(run_snapshot)` and `poll_battle(battle_snapshot)` return newly triggered reactions; `reset_run()` / `reset_battle()` clear tracking. Battle rules may filter by species (Big Dog is Cinnabark-only). No store, UI, or live objects. |
 | `reactions/reaction_player.gd` | Plays a reaction match: renders text via `catalog/reaction_text.gd`, logs `REACTION`/`PREVIEW \| <id> \| <case> \| <text>`, submits a toast, and forwards the id to the sound sink. |
 | `debug/state_capture.gd` | Optional `BRAINROT_DUMP_DIR` debug dump of changed snapshots (signature + counter). |
-| `tests/` | Zero-dependency unit tests: `auto_updater`, `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `high_scores`, `memories_panel`, `catalog`, `reaction_evaluator`, `reaction_player`, `reaction_text`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
+| `tests/` | Zero-dependency unit tests: `auto_updater`, `battle_completion_detector`, `fixture_replay`, `game_snapshot_reader`, `state_capture`, `high_scores`, `achievement_store`, `memories_panel`, `catalog`, `reaction_evaluator`, `reaction_player`, `reaction_text`, `toast_preview_panel`, `dev_config`, `mod_main_preview`, `reaction_sounds`, `ui_sound`. |
 | `dev/dev_config.gd` | Developer-mode gate (`DEV_MODE` constant or `BRAINROT_DEV_MODE`); not a user-facing setting. |
 | `dev/gd_checks.ps1` | Parse-checks every `.gd` file in the repo with `--check-only`, one Godot process per file; exits non-zero on any failure. |
 | `dev/run_tests.ps1` | Runs `tests/run_tests.gd` headless (all suites in one Godot process); exits with the runner's exit code. |

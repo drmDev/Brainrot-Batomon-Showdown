@@ -8,6 +8,7 @@ extends RefCounted
 const MOD_BASE_DIR := "res://mods/BrainRot"
 const ModLogger = preload("../core/mod_logger.gd")
 const OccurrenceStore = preload("../core/occurrence_store.gd")
+const AchievementStore = preload("../core/achievement_store.gd")
 
 var _logger = ModLogger.new()
 var _evaluator = null
@@ -18,6 +19,7 @@ var _last_shop_snapshot: Dictionary = {}
 var _run_reaction_gate_state := ""
 var _store = null
 var _current_run_key := ""
+var _achievements: Dictionary = {}
 
 
 ## Build the evaluator, sounds, species icons, and player. `host` owns the audio
@@ -77,6 +79,7 @@ func poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 	_last_shop_snapshot = run_snapshot
 	if not run_matches.is_empty() or not sold_matches.is_empty() or not buff_matches.is_empty():
 		_save_occurrences()
+		_record_achievements(run_matches + sold_matches + buff_matches, _current_run_key)
 
 
 ## Log the run-reaction phase gate only when it changes, so the first real session
@@ -99,6 +102,11 @@ func poll_battle_reactions(battle_snapshot: Dictionary) -> void:
 	var triggered: Array = _evaluator.poll_battle(battle_snapshot)
 	_logger.log_event("REACTION BATTLE | %d triggered" % triggered.size())
 	_player.play_all(triggered)
+	if not triggered.is_empty():
+		var key := _run_key(battle_snapshot)
+		if key.is_empty():
+			key = _current_run_key
+		_record_achievements(triggered, key)
 
 
 ## Reset run-scoped reaction state (the sold/buff baseline and the evaluator).
@@ -146,6 +154,37 @@ func _save_occurrences() -> void:
 	if _store == null or _current_run_key.is_empty() or _evaluator == null:
 		return
 	_store.save(_current_run_key, _evaluator.occurrences().keys())
+
+
+## The shared achievements store (loaded once by mod_main; the same Dictionary
+## reference is handed to the Memories panel, so earned state stays in sync).
+func set_achievements(store: Dictionary) -> void:
+	_achievements = store
+
+
+## The current achievements store (for tests).
+func achievements() -> Dictionary:
+	return _achievements
+
+
+## Record every triggered reaction id in the achievements store, saving only when
+## the store changed. `run_key` is the run identity (run_id or trainer_id); a
+## reaction firing twice in one run counts once.
+func _record_achievements(matches: Array, run_key: String) -> void:
+	if _achievements.is_empty() or run_key.is_empty():
+		return
+	var changed := false
+	var date := AchievementStore.current_date_string()
+	for match in matches:
+		if not match is Dictionary:
+			continue
+		var id := str(match.get("id", ""))
+		if id.is_empty():
+			continue
+		if AchievementStore.record(_achievements, id, run_key, date):
+			changed = true
+	if changed:
+		AchievementStore.save_store(_achievements)
 
 
 ## Show a reaction match exactly as gameplay would, without evaluating rules or

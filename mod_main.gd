@@ -56,6 +56,8 @@ var _reaction_coordinator = ReactionCoordinator.new()
 
 # Persistent per-metric high scores and the shop's Brain Rot Memories panel.
 var _high_scores: Dictionary = {}
+# Persistent earned-reaction achievements (core/achievement_store.gd).
+var _achievements: Dictionary = {}
 # Shop Memories button controller (hud/memories_button_controller.gd).
 var _memories_button = null
 
@@ -135,6 +137,10 @@ func _setup_core() -> void:
 	if HighScores != null:
 		_high_scores = HighScores.load_store()
 
+	var AchievementStore = load(base_dir.path_join("core/achievement_store.gd"))
+	if AchievementStore != null:
+		_achievements = AchievementStore.load_store()
+
 	# Dedicated layer so toasts can appear over the battle results screen.
 	_toast_layer = CanvasLayer.new()
 	_toast_layer.layer = 100
@@ -148,11 +154,13 @@ func _setup_core() -> void:
 	_notification_host.name = "NotificationHost"
 	_toast_layer.add_child(_notification_host)
 
-	# Shop button that opens the Brain Rot Memories high-score panel.
+	# Shop button that opens the Brain Rot Memories panel. The achievements store
+	# is handed over by reference so earned state stays in sync as reactions fire.
 	var MemoriesPanel = load(base_dir.path_join("hud/memories_panel.gd"))
 	if MemoriesPanel != null:
 		var memories_panel = MemoriesPanel.new()
 		memories_panel.name = "MemoriesPanel"
+		memories_panel.set_achievements(_achievements)
 		_toast_layer.add_child(memories_panel)
 		_memories_button = MemoriesButtonController.new(memories_panel, _logger)
 
@@ -160,6 +168,7 @@ func _setup_core() -> void:
 func _setup_reactions() -> void:
 	"""Initialize the reaction evaluator, player, and reaction sounds."""
 	_reaction_coordinator.setup(self, _logger, _submit_notification, _volume_settings.current_volume)
+	_reaction_coordinator.set_achievements(_achievements)
 
 
 ## Self-updater: checks the GitHub release manifest and swaps files (core/auto_updater.gd).

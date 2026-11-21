@@ -13,6 +13,7 @@ var _test_scripts := {
 	"mod_main_reactions": preload("test_mod_main_reactions.gd"),
 	"mod_config": preload("test_mod_config.gd"),
 	"occurrence_store": preload("test_occurrence_store.gd"),
+	"achievement_store": preload("test_achievement_store.gd"),
 	"reaction_sounds": preload("test_reaction_sounds.gd"),
 	"ui_sound": preload("test_ui_sound.gd"),
 	"fixture_replay": preload("test_fixture_replay.gd"),

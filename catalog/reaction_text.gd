@@ -82,6 +82,25 @@ const TEMPLATES := {
 	},
 }
 
+## Reaction id -> short unlock-condition description, shown on the Cheevos tab
+## only for completed reactions (undiscovered ones keep their conditions secret).
+const DESCRIPTIONS := {
+	"six_seven": "Reach day 7 with 6 lives, or 7 wins with 6 lives.",
+	"six_nine": "Reach day 9 with 6 lives, or 9 wins with 6 lives.",
+	"four_twenty": "Reach 420 shop income.",
+	"six_six_six": "Reach 666 shop income.",
+	"over_9000": "Reach over 9000 shop income.",
+	"apes_together": "Own two Sunsages as Twins.",
+	"big_dog_best_dog": "Put up over 1,000,000 shield with a Cinnabark.",
+	"oh_yeah": "Own a level-3 Beetdown.",
+	"herd_u_liek_mudkipz": "Own a level-3 Dewlotl.",
+	"double_rainbow": "Own a level-3 shiny monster as Twins.",
+	"harambe": "Sell a Sarudo.",
+	"trogdor": "Own a level-3 Furnadon.",
+	"not_the_bees": "Own a level-3 Bumblebolt.",
+	"tetsuo": "Give a Tengusto a Poison or Shock permanent buff.",
+}
+
 ## Battle metric label -> the word used in templates.
 const METRIC_WORDS := {
 	"damage": "damage",
@@ -91,6 +110,11 @@ const METRIC_WORDS := {
 	"poison": "poison",
 	"shock": "shock",
 }
+
+
+## The unlock-condition description for a reaction, or "" when unknown.
+static func description_for(id: String) -> String:
+	return str(DESCRIPTIONS.get(id, ""))
 
 
 ## Case names registered for a reaction, in TEMPLATES order.
