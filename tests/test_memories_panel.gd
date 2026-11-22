@@ -180,7 +180,7 @@ func test_content_rect_includes_filter_row_on_cheevos_tab() -> void:
 func test_cheevos_progress_label_counts_earned() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "big_dog_best_dog": {}}})
-	var expected := "2 of %d" % panel._cheevo_entries().size()
+	var expected := "2 / %d" % panel._cheevo_entries().size()
 	assert_eq(panel._cheevos_progress_label(), expected)
 	panel.free()
 
@@ -188,7 +188,7 @@ func test_cheevos_progress_label_counts_earned() -> void:
 func test_cheevos_progress_label_starts_at_zero() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {}})
-	var expected := "0 of %d" % panel._cheevo_entries().size()
+	var expected := "0 / %d" % panel._cheevo_entries().size()
 	assert_eq(panel._cheevos_progress_label(), expected)
 	panel.free()
 
@@ -224,15 +224,16 @@ func test_filter_pills_set_view() -> void:
 	panel.free()
 
 
-func test_all_filter_sorts_completed_first() -> void:
+func test_all_filter_sorts_uncompleted_first_alphabetical() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "six_seven": {}}})
 	var entries = panel._visible_cheevo_entries()
-	# Catalog order: six_seven, six_nine, four_twenty, six_six_six, over_9000, ...
-	# Earned (six_seven, over_9000) come first, in catalog order.
-	assert_eq(str(entries[0].get("id", "")), "six_seven")
-	assert_eq(str(entries[1].get("id", "")), "over_9000")
-	assert_eq(str(entries[2].get("id", "")), "six_nine")
+	# Uncompleted first, alphabetical: "Apes Together, Strong!" then "Big Dog, Best Dog!".
+	assert_eq(str(entries[0].get("id", "")), "apes_together")
+	assert_eq(str(entries[1].get("id", "")), "big_dog_best_dog")
+	# Completed last, alphabetical: "It's Over 9000!" then "Six Seven!".
+	assert_eq(str(entries[entries.size() - 2].get("id", "")), "over_9000")
+	assert_eq(str(entries[entries.size() - 1].get("id", "")), "six_seven")
 	panel.free()
 
 

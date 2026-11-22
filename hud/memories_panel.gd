@@ -47,24 +47,36 @@ const TAB_GAP := 2.0
 const TAB_PADDING_X := 12.0
 const TAB_ICON_SIZE := 12
 
-# The All / Completed Only pill toggles and the progress bar sit on a second row
-# under the tabs (Cheevos tab only).
+# The All / Completed Only pill toggles and the progress section sit on a second
+# row under the tabs (Cheevos tab only). The row is tall enough for the stacked
+# "BRAIN CELLS COLLECTED" label, count, and bar on the right.
 const FILTER_LABELS := ["All", "Completed Only"]
-const FILTER_BAR_H := 12.0
+const FILTER_BAR_H := 26.0
 const FILTER_GAP := 2.0
 const FILTER_FONT_SIZE := 7
-const PROGRESS_BAR_W := 90.0
+const PILL_H := 12.0
+const PROGRESS_BAR_W := 120.0
 const PROGRESS_BAR_H := 6.0
+const PROGRESS_LABEL_FONT_SIZE := 6
+const PROGRESS_COUNT_FONT_SIZE := 8
 
-# Cheevos card layout. Cards are two lines tall (title + description) with a
-# reaction icon and a trophy; the list is a fixed window of cards.
-const CHEEVO_VISIBLE_ROWS := 5
-const CHEEVO_ROW_H := 30.0
-const CHEEVO_ROW_GAP := 3.0
+# Header icons flanking the title (smilyBrain.png is 128x124, so draw_fit keeps
+# its aspect ratio inside a square box).
+const HEADER_ICON_SIZE := 18.0
+const HEADER_ICON_GAP := 6.0
+
+# Cheevos card layout. Cards hold a reaction icon, a title, and up to two body
+# lines (description or teaser), plus a trophy badge. The visible row count is
+# derived from the panel height so the list fills the taller panel.
+const CHEEVO_ROW_H := 32.0
+const CHEEVO_ROW_GAP := 4.0
 const CHEEVO_ICON_SIZE := 22.0
 const CHEEVO_TROPHY_SIZE := 18.0
 const CHEEVO_DESC_FONT_SIZE := 6
-const CHEEVO_CHECKBOX_SIZE := 10.0
+const CHEEVO_TITLE_LINE_H := 10.0
+const CHEEVO_DESC_LINE_H := 7.0
+const CHEEVO_CARD_PAD := 8.0
+const CHEEVO_MAX_BODY_LINES := 2
 
 # Undiscovered titles are dimmed so completed ones stand out.
 const CHEEVO_DIM_COLOR := Color(0.55, 0.6, 0.68)
@@ -84,6 +96,10 @@ var _italic_font: SystemFont
 var _icon_cache: Dictionary = {}
 var _trophy_texture: Texture2D = null
 var _trophy_loaded := false
+var _smily_texture: Texture2D = null
+var _smily_loaded := false
+var _hs_chart_texture: Texture2D = null
+var _hs_chart_loaded := false
 var _card_done_style: StyleBoxFlat
 var _card_locked_style: StyleBoxFlat
 
@@ -136,6 +152,23 @@ func _popup_title() -> String:
 	return "Brain Rot Memories"
 
 
+## Draw the title flanked by the smilyBrain icon on both sides.
+func _draw_popup() -> void:
+	super._draw_popup()
+	var tex := _smily_brain()
+	if tex == null:
+		return
+	var r := _popup_rect()
+	var title := _popup_title()
+	var tw := _text_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, TITLE_FONT_SIZE).x
+	var center_x := r.position.x + r.size.x * 0.5
+	var y := r.position.y + (TITLE_H - HEADER_ICON_SIZE) * 0.5
+	var left_x := center_x - tw * 0.5 - HEADER_ICON_GAP - HEADER_ICON_SIZE
+	var right_x := center_x + tw * 0.5 + HEADER_ICON_GAP
+	PanelIcons.draw_fit(self, tex, Rect2(Vector2(left_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
+	PanelIcons.draw_fit(self, tex, Rect2(Vector2(right_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
+
+
 ## The Memories panel is wider than the shared modal default.
 func _popup_rect() -> Rect2:
 	var viewport_size := _viewport_size()
@@ -162,7 +195,7 @@ func _build_tab_buttons() -> void:
 	pressed.bg_color = BORDER_COLOR
 	pressed.set_border_width_all(2)
 
-	var tab_icons := [_make_bar_chart_icon(), _trophy()]
+	var tab_icons := [_hs_chart_icon(), _trophy()]
 	for i in range(TAB_LABELS.size()):
 		var b := Button.new()
 		b.name = "TabButton%d" % i
@@ -172,6 +205,11 @@ func _build_tab_buttons() -> void:
 		b.add_theme_font_override("font", font)
 		b.add_theme_font_size_override("font_size", BODY_FONT_SIZE)
 		b.add_theme_constant_override("icon_max_width", TAB_ICON_SIZE)
+		# Keep the icon tight against the label: left-align both and use a small
+		# separation, otherwise the icon sits at the far left with a gap.
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_constant_override("h_separation", 2)
 		if tab_icons[i] != null:
 			b.icon = tab_icons[i]
 		for state in ["normal", "hover", "focus", "disabled"]:
@@ -215,15 +253,20 @@ func _build_tab_buttons() -> void:
 	_sync_tab_buttons()
 
 
-## A tiny bar-chart icon for the High Scores tab, drawn as a texture.
-func _make_bar_chart_icon() -> ImageTexture:
-	var size := TAB_ICON_SIZE
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-	image.fill_rect(Rect2i(1, 7, 2, 4), BORDER_COLOR)
-	image.fill_rect(Rect2i(5, 4, 2, 7), BORDER_COLOR)
-	image.fill_rect(Rect2i(9, 1, 2, 10), BORDER_COLOR)
-	return ImageTexture.create_from_image(image)
+## The High Scores tab icon (assets/icons/hsChart.png), loaded once.
+func _hs_chart_icon() -> Texture2D:
+	if not _hs_chart_loaded:
+		_hs_chart_loaded = true
+		_hs_chart_texture = PanelIcons.load_icon(str(get_script().resource_path), "hsChart.png")
+	return _hs_chart_texture
+
+
+## The header brain icon (assets/icons/smilyBrain.png), loaded once.
+func _smily_brain() -> Texture2D:
+	if not _smily_loaded:
+		_smily_loaded = true
+		_smily_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrain.png")
+	return _smily_texture
 
 
 ## The game's gold trophy texture, loaded once. Guarded by ResourceLoader.exists
@@ -275,18 +318,19 @@ func _layout_tab_buttons() -> void:
 	var y := r.position.y + TITLE_H + POPUP_PADDING
 	for i in range(_tab_buttons.size()):
 		var b: Button = _tab_buttons[i]
-		var width := _text_font.get_string_size(TAB_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x + TAB_PADDING_X + TAB_ICON_SIZE + 4.0
+		var width := TAB_ICON_SIZE + 2.0 + _text_font.get_string_size(TAB_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x + TAB_PADDING_X
 		b.position = Vector2(x, y)
 		b.size = Vector2(width, TAB_BAR_H)
 		x += width + TAB_GAP
 
 	var fy := y + TAB_BAR_H + TAB_GAP
+	var pill_y := fy + (FILTER_BAR_H - PILL_H) * 0.5
 	var fx := r.position.x + POPUP_PADDING
 	for i in range(_filter_buttons.size()):
 		var f: Button = _filter_buttons[i]
 		var fw := _text_font.get_string_size(FILTER_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, FILTER_FONT_SIZE).x + TAB_PADDING_X
-		f.position = Vector2(fx, fy)
-		f.size = Vector2(fw, FILTER_BAR_H)
+		f.position = Vector2(fx, pill_y)
+		f.size = Vector2(fw, PILL_H)
 		fx += fw + TAB_GAP
 
 
@@ -377,21 +421,23 @@ func _draw_cell(cell_rect: Rect2, row: int, column: int, color: Color) -> void:
 
 # --- Content routing --------------------------------------------------------
 
-## The popup height is constant across tabs: the larger of the High Scores table
-## and the Cheevos visible window (plus its filter row), so switching tabs never
-## resizes the popup.
+## The panel takes up the full viewport height (the previous two-thirds height
+## increased by 50%), clamped by the popup margin in _popup_rect(). The height is
+## constant across tabs.
 func _popup_height() -> float:
-	var top := TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
-	var high_scores_h := top + HEADER_ROW_H + HEADER_GAP + _table_row_count() * ROW_H + POPUP_PADDING
-	var cheevos_h := top + FILTER_BAR_H + FILTER_GAP + CHEEVO_VISIBLE_ROWS * CHEEVO_ROW_H + POPUP_PADDING
-	return maxf(high_scores_h, cheevos_h)
+	return _viewport_size().y * 2.0 / 3.0 * 1.5
+
+
+## How many Cheevos cards fit in the content area at the current panel height.
+func _cheevo_visible_rows() -> int:
+	var content_h := _popup_rect().size.y - (TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP + FILTER_BAR_H + FILTER_GAP + POPUP_PADDING)
+	return maxi(int(content_h / CHEEVO_ROW_H), 1)
 
 
 func _draw_content(rect: Rect2) -> void:
 	var content := _content_rect(rect)
 	if _tab == TAB_CHEEVOS:
-		_draw_cheevos_progress(rect)
-		_draw_progress_bar(rect)
+		_draw_progress_section(rect)
 		_draw_cheevos(content)
 	else:
 		_draw_table(content)
@@ -427,51 +473,57 @@ func _is_earned(id: String) -> bool:
 
 
 ## The Cheevos entries shown under the current view. The all view shows
-## completed reactions first, then the rest, preserving catalog order within
-## each group; the completed-only view shows just the earned reactions.
+## uncompleted reactions first, then completed, each group in alphabetical
+## order; the completed-only view shows just the earned reactions, alphabetical.
 func _visible_cheevo_entries() -> Array:
-	var out: Array = []
+	var not_done: Array = []
+	var done: Array = []
+	for entry in _cheevo_entries():
+		if _is_earned(str(entry.get("id", ""))):
+			done.append(entry)
+		else:
+			not_done.append(entry)
+	not_done.sort_custom(_compare_by_title)
+	done.sort_custom(_compare_by_title)
 	if _completed_only:
-		for entry in _cheevo_entries():
-			if _is_earned(str(entry.get("id", ""))):
-				out.append(entry)
-	else:
-		var done: Array = []
-		var not_done: Array = []
-		for entry in _cheevo_entries():
-			if _is_earned(str(entry.get("id", ""))):
-				done.append(entry)
-			else:
-				not_done.append(entry)
-		out = done + not_done
-	return out
+		return done
+	return not_done + done
 
 
-## "X of Y" progress text: earned reactions vs the full catalog count.
+## Case-insensitive alphabetical comparison by display title.
+func _compare_by_title(a: Dictionary, b: Dictionary) -> bool:
+	return _cheevo_display_title(a).to_lower() < _cheevo_display_title(b).to_lower()
+
+
+## "X / Y" progress text: earned reactions vs the full catalog count.
 func _cheevos_progress_label() -> String:
-	return "%d of %d" % [AchievementStore.earned_count(_achievements), _cheevo_entries().size()]
+	return "%d / %d" % [AchievementStore.earned_count(_achievements), _cheevo_entries().size()]
 
 
-## Draw the "X of Y" progress label right-aligned on the tab row.
-func _draw_cheevos_progress(rect: Rect2) -> void:
-	var label := _cheevos_progress_label()
+## Draw the "BRAIN CELLS COLLECTED" label, the "X / Y" count, and the progress
+## bar as one right-aligned group on the filter row.
+func _draw_progress_section(rect: Rect2) -> void:
 	var inner_left := rect.position.x + POPUP_PADDING
 	var inner_w := rect.size.x - POPUP_PADDING * 2.0
-	var y := rect.position.y + TITLE_H + POPUP_PADDING
-	var text_width := _text_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x
+	var row_y := rect.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
+	var right := inner_left + inner_w
+
+	var label := "BRAIN CELLS COLLECTED"
+	var lw := _text_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_LABEL_FONT_SIZE).x
 	_draw_text_shadow(
-		Vector2(inner_left + inner_w - text_width, y + TAB_BAR_H - TEXT_BASELINE_OFFSET),
-		label, HEADER_COLOR, BODY_FONT_SIZE,
-		HORIZONTAL_ALIGNMENT_LEFT, text_width)
+		Vector2(right - lw, row_y + 7.0),
+		label, DESCRIPTION_COLOR, PROGRESS_LABEL_FONT_SIZE,
+		HORIZONTAL_ALIGNMENT_LEFT, lw)
 
+	var count := _cheevos_progress_label()
+	var cw := _text_font.get_string_size(count, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_COUNT_FONT_SIZE).x
+	_draw_text_shadow(
+		Vector2(right - cw, row_y + 17.0),
+		count, HEADER_COLOR, PROGRESS_COUNT_FONT_SIZE,
+		HORIZONTAL_ALIGNMENT_LEFT, cw)
 
-## Draw the completion progress bar right-aligned on the filter row.
-func _draw_progress_bar(rect: Rect2) -> void:
-	var inner_left := rect.position.x + POPUP_PADDING
-	var inner_w := rect.size.x - POPUP_PADDING * 2.0
-	var y := rect.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
-	var bar_x := inner_left + inner_w - PROGRESS_BAR_W
-	var bar_y := y + (FILTER_BAR_H - PROGRESS_BAR_H) * 0.5
+	var bar_x := right - PROGRESS_BAR_W
+	var bar_y := row_y + 20.0
 	var track := Rect2(Vector2(bar_x, bar_y), Vector2(PROGRESS_BAR_W, PROGRESS_BAR_H))
 	draw_rect(track, Color(0.0, 0.0, 0.0, 0.4))
 	draw_rect(track, BORDER_COLOR, false, 1.0)
@@ -486,7 +538,7 @@ func _draw_progress_bar(rect: Rect2) -> void:
 
 ## The maximum scroll offset for the Cheevos list (0 when everything fits).
 func _max_scroll_offset() -> int:
-	return maxi(_visible_cheevo_entries().size() - CHEEVO_VISIBLE_ROWS, 0)
+	return maxi(_visible_cheevo_entries().size() - _cheevo_visible_rows(), 0)
 
 
 ## Title-case a reaction title for the Cheevos list (e.g. "IT'S OVER 9000!" ->
@@ -528,7 +580,7 @@ func _draw_cheevos(rect: Rect2) -> void:
 	var row_y := rect.position.y + TITLE_H + POPUP_PADDING
 
 	var entries := _visible_cheevo_entries()
-	for i in range(CHEEVO_VISIBLE_ROWS):
+	for i in range(_cheevo_visible_rows()):
 		var entry_index := _scroll_offset + i
 		if entry_index >= entries.size():
 			break
@@ -538,57 +590,83 @@ func _draw_cheevos(rect: Rect2) -> void:
 		row_y += CHEEVO_ROW_H
 
 
-## Draw one reaction card.
+## Draw one reaction card: reaction icon, title, body (description or teaser),
+## and a trophy badge. No checkbox; the badge is the completion indicator.
 func _draw_cheevo_card(card: Rect2, entry: Dictionary, earned: bool) -> void:
 	_card_style(earned).draw(get_canvas_item(), card)
 	var id := str(entry.get("id", ""))
-	var pad := 6.0
+	var pad := CHEEVO_CARD_PAD
 
-	# Completion checkbox.
-	var box := Rect2(
-		Vector2(card.position.x + pad, card.position.y + (card.size.y - CHEEVO_CHECKBOX_SIZE) * 0.5),
-		Vector2(CHEEVO_CHECKBOX_SIZE, CHEEVO_CHECKBOX_SIZE))
-	if earned:
-		draw_rect(box, BORDER_COLOR)
-		_draw_check(box)
-	else:
-		draw_rect(box, CHEEVO_DIM_COLOR, false, 1.0)
-
-	# Reaction icon.
-	var icon_x := box.position.x + CHEEVO_CHECKBOX_SIZE + 6.0
+	# Reaction icon, dimmed when locked.
 	var icon_rect := Rect2(
-		Vector2(icon_x, card.position.y + (card.size.y - CHEEVO_ICON_SIZE) * 0.5),
+		Vector2(card.position.x + pad, card.position.y + (card.size.y - CHEEVO_ICON_SIZE) * 0.5),
 		Vector2(CHEEVO_ICON_SIZE, CHEEVO_ICON_SIZE))
 	var icon := _cheevo_icon(entry)
 	if icon != null:
-		PanelIcons.draw_fit(self, icon, icon_rect)
+		_draw_icon_fit(icon, icon_rect, Color.WHITE if earned else Color(1, 1, 1, 0.5))
 
-	# Trophy on the right.
+	# Trophy badge on the right.
 	var trophy_rect := Rect2(
 		Vector2(card.position.x + card.size.x - pad - CHEEVO_TROPHY_SIZE, card.position.y + (card.size.y - CHEEVO_TROPHY_SIZE) * 0.5),
 		Vector2(CHEEVO_TROPHY_SIZE, CHEEVO_TROPHY_SIZE))
 	_draw_trophy(trophy_rect, earned)
 
-	# Title and description / teaser.
-	var text_x := icon_rect.position.x + CHEEVO_ICON_SIZE + 6.0
-	var text_w := trophy_rect.position.x - 6.0 - text_x
+	# Text block: title plus up to two body lines, vertically centered.
+	var text_x := icon_rect.position.x + CHEEVO_ICON_SIZE + 8.0
+	var text_w := trophy_rect.position.x - 8.0 - text_x
 	var title := _cheevo_display_title(entry)
 	var title_color: Color = TITLE_COLOR if earned else CHEEVO_DIM_COLOR
+	var body := ReactionText.description_for(id) if earned else ReactionText.hint_for(id)
+	var body_lines := _wrap_text(body, _text_font, CHEEVO_DESC_FONT_SIZE, text_w)
+	if body_lines.size() > CHEEVO_MAX_BODY_LINES:
+		body_lines = body_lines.slice(0, CHEEVO_MAX_BODY_LINES)
+	var block_h := CHEEVO_TITLE_LINE_H + body_lines.size() * CHEEVO_DESC_LINE_H
+	var top := card.position.y + (card.size.y - block_h) * 0.5
 	_draw_text_shadow(
-		Vector2(text_x, card.position.y + 13.0),
+		Vector2(text_x, top + 10.0),
 		title, title_color, BODY_FONT_SIZE,
 		HORIZONTAL_ALIGNMENT_LEFT, text_w)
-	if earned:
-		var desc := ReactionText.description_for(id)
-		if not desc.is_empty():
+	for i in range(body_lines.size()):
+		var line_y := top + CHEEVO_TITLE_LINE_H + (i + 1) * CHEEVO_DESC_LINE_H - 1.0
+		if earned:
 			_draw_text_shadow(
-				Vector2(text_x, card.position.y + 24.0),
-				desc, DESCRIPTION_COLOR, CHEEVO_DESC_FONT_SIZE,
+				Vector2(text_x, line_y),
+				body_lines[i], DESCRIPTION_COLOR, CHEEVO_DESC_FONT_SIZE,
 				HORIZONTAL_ALIGNMENT_LEFT, text_w)
-	else:
-		var hint := ReactionText.hint_for(id)
-		if not hint.is_empty():
-			_draw_hint_text(Vector2(text_x, card.position.y + 24.0), hint, text_w)
+		else:
+			_draw_hint_text(Vector2(text_x, line_y), body_lines[i], text_w)
+
+
+## Draw a texture inside `rect` at its natural aspect ratio, with a modulate.
+func _draw_icon_fit(tex: Texture2D, rect: Rect2, modulate: Color) -> void:
+	if tex == null:
+		return
+	var tex_size := tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var scale := minf(rect.size.x / tex_size.x, rect.size.y / tex_size.y)
+	var draw_size := tex_size * scale
+	var pos := rect.position + (rect.size - draw_size) * 0.5
+	draw_texture_rect(tex, Rect2(pos, draw_size), false, modulate)
+
+
+## Split text into lines that fit `max_width` at `font_size`.
+func _wrap_text(text: String, font: Font, font_size: int, max_width: float) -> PackedStringArray:
+	var lines: PackedStringArray = []
+	if text.is_empty():
+		return lines
+	var current := ""
+	for word in text.split(" ", false):
+		var candidate := word if current.is_empty() else current + " " + word
+		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= max_width:
+			current = candidate
+		else:
+			if not current.is_empty():
+				lines.append(current)
+			current = word
+	if not current.is_empty():
+		lines.append(current)
+	return lines
 
 
 ## The card background: a gold-tinted panel when earned, a dim panel when locked.
@@ -635,15 +713,6 @@ func _draw_hint_text(pos: Vector2, text: String, width: float) -> void:
 		_italic_font.italic = true
 	draw_string(_italic_font, pos + Vector2(0.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, width, CHEEVO_DESC_FONT_SIZE, Color(0.0, 0.0, 0.0, 0.8))
 	draw_string(_italic_font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, width, CHEEVO_DESC_FONT_SIZE, CHEEVO_DIM_COLOR)
-
-
-## Draw a white checkmark inside a filled checkbox.
-func _draw_check(box_rect: Rect2) -> void:
-	var cx := box_rect.position.x
-	var cy := box_rect.position.y
-	var s := CHEEVO_CHECKBOX_SIZE
-	draw_line(Vector2(cx + s * 0.2, cy + s * 0.55), Vector2(cx + s * 0.45, cy + s * 0.8), Color.WHITE, 1.0)
-	draw_line(Vector2(cx + s * 0.45, cy + s * 0.8), Vector2(cx + s * 0.8, cy + s * 0.2), Color.WHITE, 1.0)
 
 
 # --- Input ------------------------------------------------------------------
