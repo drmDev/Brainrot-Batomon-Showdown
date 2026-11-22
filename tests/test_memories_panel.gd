@@ -214,12 +214,12 @@ func test_visible_cheevo_entries_filter_by_mode() -> void:
 	panel.free()
 
 
-func test_completed_checkbox_toggles_view() -> void:
+func test_filter_pills_set_view() -> void:
 	var panel = _panel()
 	assert_false(panel._completed_only)
-	panel._on_completed_checkbox_toggled(true)
+	panel._on_filter_pressed(1)
 	assert_true(panel._completed_only)
-	panel._on_completed_checkbox_toggled(false)
+	panel._on_filter_pressed(0)
 	assert_false(panel._completed_only)
 	panel.free()
 
