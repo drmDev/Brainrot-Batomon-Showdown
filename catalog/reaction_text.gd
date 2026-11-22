@@ -85,12 +85,12 @@ const TEMPLATES := {
 ## Reaction id -> short unlock-condition description, shown on the Cheevos tab
 ## only for completed reactions (undiscovered ones keep their conditions secret).
 const DESCRIPTIONS := {
-	"six_seven": "Reach day 7 with 6 lives, or 7 wins with 6 lives.",
-	"six_nine": "Reach day 9 with 6 lives, or 9 wins with 6 lives.",
-	"four_twenty": "Reach 420 shop income.",
-	"six_six_six": "Reach 666 shop income.",
-	"over_9000": "Reach over 9000 shop income.",
-	"apes_together": "Own two Sunsages as Twins.",
+	"six_seven": "With 6 lives, reach day 7 or 7 wins; or hit 67 of a battle metric or 67 shop income.",
+	"six_nine": "With 6 lives, reach day 9 or 9 wins; or hit 69 of a battle metric or 69 shop income.",
+	"four_twenty": "Hit 420 of a battle metric or 420 shop income.",
+	"six_six_six": "Hit 666 of a battle metric or 666 shop income.",
+	"over_9000": "Hit 9000+ of a battle metric or over 9000 shop income.",
+	"apes_together": "Own a Sunsage as Twins.",
 	"big_dog_best_dog": "Put up over 1,000,000 shield with a Cinnabark.",
 	"oh_yeah": "Own a level-3 Beetdown.",
 	"herd_u_liek_mudkipz": "Own a level-3 Dewlotl.",
@@ -114,7 +114,7 @@ const HINTS := {
 	"big_dog_best_dog": "A good boy with a very large shield...",
 	"oh_yeah": "Requires Beetdown...",
 	"herd_u_liek_mudkipz": "Requires Dewlotl...",
-	"double_rainbow": "Twins and a rainbow of shine...",
+	"double_rainbow": "Requires Twins trainer and shiny...",
 	"harambe": "Requires something with Sarudo...",
 	"trogdor": "Requires Furnadon...",
 	"not_the_bees": "Requires Bumblebolt...",

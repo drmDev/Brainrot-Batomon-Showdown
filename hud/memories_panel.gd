@@ -4,14 +4,15 @@ extends "table_modal_panel.gd"
 ## The rainbow brain button opens a two-tab panel:
 ## - High Scores: a table of the best single-unit value per battle metric, with
 ##   the unit that set each record.
-## - Cheevos: a scrollable list of reaction cards. Each card shows a completion
-##   checkbox, the reaction icon, the title, and (for completed reactions) the
-##   unlock description; undiscovered reactions show a dim italic teaser. A gold
-##   trophy marks completed cards, a dim "?" trophy marks locked ones. The tab
-##   row carries the "X of Y" label; a progress bar and All / Completed Only pill
-##   toggles sit on the row below. The all view sorts completed reactions first.
+## - Cheevos: a scrollable list of reaction cards. Each card shows the reaction
+##   icon, the title, and a body line: the unlock description for completed
+##   reactions, or a dim italic teaser for undiscovered ones. A gold trophy badge
+##   marks completed cards; a dimmed trophy with a red qMark marks locked ones.
+##   The row below the tabs holds a Completed Only toggle and the "BRAIN CELLS
+##   COLLECTED" label, "X / Y" count, and rainbow progress bar. Default order is
+##   uncompleted first, then completed, each alphabetical.
 ##
-## The tabs and filter pills are real Buttons styled like the Creature Comforts
+## The tabs and toggle are real Buttons styled like the Creature Comforts
 ## Watchlist (navy/gold compact chrome); the active one reads as a pressed gold
 ## button. Close the panel with the X box, by clicking outside the popup, or with
 ## Escape.
@@ -30,8 +31,8 @@ const UNIT_ICON_GAP := 3.0
 const COLUMN_FRACTIONS := [0.24, 0.20, 0.32, 0.24]
 const HEADER_LABELS := ["Metric", "Best", "Unit", "Date Acquired"]
 
-# The Memories panel is wider than the other shop modals so the reaction cards
-# fit an icon, two text lines, and a trophy without crowding.
+# The Memories panel uses its own width (narrower than the shared 320 default)
+# so the reaction cards stay compact.
 const PANEL_WIDTH := 294.0
 
 # --- Tabs -------------------------------------------------------------------
@@ -47,21 +48,26 @@ const TAB_GAP := 2.0
 const TAB_PADDING_X := 12.0
 const TAB_ICON_SIZE := 12
 
-# The All / Completed Only pill toggles and the progress section sit on a second
-# row under the tabs (Cheevos tab only). The row is tall enough for the stacked
-# "BRAIN CELLS COLLECTED" label, count, and bar on the right.
-const FILTER_LABELS := ["Completed Only"]
+# The Completed Only toggle and the progress section sit on a second row under
+# the tabs (Cheevos tab only). The row is tall enough for the label, count, and
+# bar on the right.
+const COMPLETED_ONLY_LABEL := "Completed Only"
 const FILTER_BAR_H := 26.0
 const FILTER_GAP := 2.0
 const FILTER_FONT_SIZE := 7
-const PILL_H := 12.0
+const CHECKBOX_ICON_SIZE := 10
+# The filter row is two columns: [tick] Completed Only on the left, and the
+# progress label, count, and bar on the right. Both columns share one baseline.
+const FILTER_COLUMN_SPLIT := 0.5
+const CHECKBOX_LABEL_GAP := 3.0
+const PROGRESS_BAR_GAP := 3.0
 const PROGRESS_BAR_W := 120.0
 const PROGRESS_BAR_H := 6.0
 const PROGRESS_LABEL_FONT_SIZE := 6
 const PROGRESS_COUNT_FONT_SIZE := 8
 
-# Header icons flanking the title (smilyBrain.png is 128x124, so draw_fit keeps
-# its aspect ratio inside a square box).
+# Header icons flanking the title (smilyBrainLeft/Right are 128x124, so draw_fit
+# keeps their aspect ratio inside a square box).
 const HEADER_ICON_SIZE := 18.0
 const HEADER_ICON_GAP := 6.0
 
@@ -91,19 +97,13 @@ var _tab := TAB_HIGH_SCORES
 var _scroll_offset := 0
 var _tab_buttons: Array = []
 var _completed_only := false
-var _filter_buttons: Array = []
+var _completed_only_toggle: Button
+var _check_textures: Dictionary = {}
 var _italic_font: SystemFont
 var _icon_cache: Dictionary = {}
+var _panel_icon_cache: Dictionary = {}
 var _trophy_texture: Texture2D = null
 var _trophy_loaded := false
-var _smily_left_texture: Texture2D = null
-var _smily_left_loaded := false
-var _smily_right_texture: Texture2D = null
-var _smily_right_loaded := false
-var _hs_chart_texture: Texture2D = null
-var _hs_chart_loaded := false
-var _qmark_texture: Texture2D = null
-var _qmark_loaded := false
 var _card_done_style: StyleBoxFlat
 var _card_locked_style: StyleBoxFlat
 var _rainbow_tex: ImageTexture = null
@@ -162,8 +162,8 @@ func _popup_title() -> String:
 ## Draw the title flanked by the left/right smilyBrain icons, facing away.
 func _draw_popup() -> void:
 	super._draw_popup()
-	var left := _smily_left()
-	var right := _smily_right()
+	var left := _panel_icon("smilyBrainLeft.png")
+	var right := _panel_icon("smilyBrainRight.png")
 	if left == null and right == null:
 		return
 	var r := _popup_rect()
@@ -201,11 +201,13 @@ func _build_tab_buttons() -> void:
 	# high for these compact buttons; nudge the top margin so the label reads
 	# vertically centered.
 	normal.content_margin_top += 1.0
+	# Nudge the tab content (icon + label) 1px right.
+	normal.content_margin_left += 1.0
 	var pressed: StyleBoxFlat = normal.duplicate()
 	pressed.bg_color = BORDER_COLOR
 	pressed.set_border_width_all(2)
 
-	var tab_icons := [_hs_chart_icon(), _trophy()]
+	var tab_icons := [_panel_icon("sInvader.png"), _trophy()]
 	for i in range(TAB_LABELS.size()):
 		var b := Button.new()
 		b.name = "TabButton%d" % i
@@ -233,67 +235,43 @@ func _build_tab_buttons() -> void:
 		add_child(b)
 		_tab_buttons.append(b)
 
-	# Pill-shaped All / Completed Only toggles.
-	var pill_normal := StyleBoxFlat.new()
-	pill_normal.bg_color = BG_COLOR
-	pill_normal.border_color = BORDER_COLOR
-	pill_normal.set_border_width_all(1)
-	pill_normal.set_corner_radius_all(8)
-	pill_normal.set_content_margin_all(2.0)
-	var pill_pressed: StyleBoxFlat = pill_normal.duplicate()
-	pill_pressed.bg_color = BORDER_COLOR
-	for i in range(FILTER_LABELS.size()):
-		var f := Button.new()
-		f.name = "CheevoFilter%d" % i
-		f.text = FILTER_LABELS[i]
-		f.toggle_mode = true
-		f.focus_mode = Control.FOCUS_NONE
-		f.add_theme_font_override("font", font)
-		f.add_theme_font_size_override("font_size", FILTER_FONT_SIZE)
-		for state in ["normal", "hover", "focus", "disabled"]:
-			f.add_theme_stylebox_override(state, pill_normal)
-		f.add_theme_stylebox_override("pressed", pill_pressed)
-		f.add_theme_color_override("font_color", DESCRIPTION_COLOR)
-		f.add_theme_color_override("font_hover_color", DESCRIPTION_COLOR)
-		f.add_theme_color_override("font_pressed_color", BG_COLOR)
-		f.add_theme_color_override("font_hover_pressed_color", BG_COLOR)
-		f.pressed.connect(_on_completed_only_pressed)
-		add_child(f)
-		_filter_buttons.append(f)
+	# Transparent toggle over the tick and label. The panel draws the tick and
+	# label itself so both filter columns share one text baseline; this control
+	# only receives the clicks. Every state uses an empty stylebox so nothing
+	# is drawn or padded by the theme.
+	_completed_only_toggle = Button.new()
+	_completed_only_toggle.name = "CheevoCompletedOnly"
+	_completed_only_toggle.toggle_mode = true
+	_completed_only_toggle.focus_mode = Control.FOCUS_NONE
+	_completed_only_toggle.text = ""
+	for state in ["normal", "hover", "pressed", "focus", "disabled", "hover_pressed"]:
+		_completed_only_toggle.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	_completed_only_toggle.toggled.connect(_on_completed_only_toggled)
+	add_child(_completed_only_toggle)
 	_sync_tab_buttons()
 
 
-## The High Scores tab icon (assets/icons/sInvader.png, with a baked 1px white
-## border), loaded once.
-func _hs_chart_icon() -> Texture2D:
-	if not _hs_chart_loaded:
-		_hs_chart_loaded = true
-		_hs_chart_texture = PanelIcons.load_icon(str(get_script().resource_path), "sInvader.png")
-	return _hs_chart_texture
+## A small checkbox icon: a gold-filled square when checked, a gold outline when
+## not. Built as a texture so the CheckBox stays compact at the HUD scale.
+func _make_check_icon(filled: bool) -> ImageTexture:
+	var size := CHECKBOX_ICON_SIZE
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	if filled:
+		image.fill_rect(Rect2i(0, 0, size, size), BORDER_COLOR)
+	else:
+		image.fill_rect(Rect2i(0, 0, size, 1), BORDER_COLOR)
+		image.fill_rect(Rect2i(0, size - 1, size, 1), BORDER_COLOR)
+		image.fill_rect(Rect2i(0, 0, 1, size), BORDER_COLOR)
+		image.fill_rect(Rect2i(size - 1, 0, 1, size), BORDER_COLOR)
+	return ImageTexture.create_from_image(image)
 
 
-## The left header brain icon (assets/icons/smilyBrainLeft.png), loaded once.
-func _smily_left() -> Texture2D:
-	if not _smily_left_loaded:
-		_smily_left_loaded = true
-		_smily_left_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrainLeft.png")
-	return _smily_left_texture
-
-
-## The right header brain icon (assets/icons/smilyBrainRight.png), loaded once.
-func _smily_right() -> Texture2D:
-	if not _smily_right_loaded:
-		_smily_right_loaded = true
-		_smily_right_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrainRight.png")
-	return _smily_right_texture
-
-
-## The red question-mark icon (assets/icons/qMark.png), loaded once.
-func _qmark() -> Texture2D:
-	if not _qmark_loaded:
-		_qmark_loaded = true
-		_qmark_texture = PanelIcons.load_icon(str(get_script().resource_path), "qMark.png")
-	return _qmark_texture
+## A loose mod icon from assets/icons/, loaded once and cached by file name.
+func _panel_icon(file_name: String) -> Texture2D:
+	if not _panel_icon_cache.has(file_name):
+		_panel_icon_cache[file_name] = PanelIcons.load_icon(str(get_script().resource_path), file_name)
+	return _panel_icon_cache[file_name]
 
 
 ## The game's gold trophy texture, loaded once. Guarded by ResourceLoader.exists
@@ -316,19 +294,71 @@ func _sync_tab_buttons() -> void:
 	_sync_filter_buttons()
 
 
-## Keep the filter toggle's pressed state and visibility in sync.
+## Keep the Completed Only toggle's state and visibility in sync.
 func _sync_filter_buttons() -> void:
-	for i in range(_filter_buttons.size()):
-		var b: Button = _filter_buttons[i]
-		b.button_pressed = _completed_only
-		b.visible = _popup_open and _tab == TAB_CHEEVOS
+	if _completed_only_toggle != null:
+		_completed_only_toggle.set_pressed_no_signal(_completed_only)
+		_completed_only_toggle.visible = _popup_open and _tab == TAB_CHEEVOS
+
+
+## The filter row: the popup's inner width, directly below the tab row.
+func _filter_row_rect() -> Rect2:
+	var r := _popup_rect()
+	return Rect2(
+		Vector2(r.position.x + POPUP_PADDING, r.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP),
+		Vector2(r.size.x - POPUP_PADDING * 2.0, FILTER_BAR_H))
+
+
+## Split the filter row into [left column (tick + label), right column (progress)].
+func _filter_columns() -> Array:
+	var row := _filter_row_rect()
+	var w1 := row.size.x * FILTER_COLUMN_SPLIT
+	return [
+		Rect2(row.position, Vector2(w1, row.size.y)),
+		Rect2(row.position + Vector2(w1, 0.0), Vector2(row.size.x - w1, row.size.y)),
+	]
+
+
+## The shared text baseline for both columns. The right column's stack (count
+## text, gap, progress bar) is centered in the row, and the baseline is the
+## count text's baseline inside that stack.
+func _filter_baseline_y() -> float:
+	var row := _filter_row_rect()
+	var asc := _text_font.get_ascent(PROGRESS_COUNT_FONT_SIZE)
+	var desc := _text_font.get_descent(PROGRESS_COUNT_FONT_SIZE)
+	var stack_h := asc + desc + PROGRESS_BAR_GAP + PROGRESS_BAR_H
+	return row.position.y + (row.size.y - stack_h) * 0.5 + asc
+
+
+## Top y of the progress bar, the second row of the right column.
+func _progress_bar_y() -> float:
+	return _filter_baseline_y() + _text_font.get_descent(PROGRESS_COUNT_FONT_SIZE) + PROGRESS_BAR_GAP
+
+
+## Vertical center of filter row 2: the progress bar's center line. The Completed
+## Only tick and label are centered here, so they sit in row 2, column 1.
+func _filter_row2_center_y() -> float:
+	return _progress_bar_y() + PROGRESS_BAR_H * 0.5
+
+
+## Width of the left column's tick + gap + label, used to size the hit target.
+func _completed_only_width() -> float:
+	var label_w := _text_font.get_string_size(COMPLETED_ONLY_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, FILTER_FONT_SIZE).x
+	return CHECKBOX_ICON_SIZE + CHECKBOX_LABEL_GAP + label_w
+
+
+## The cached tick texture for the checked or unchecked state.
+func _check_texture(filled: bool) -> ImageTexture:
+	var key := "on" if filled else "off"
+	if not _check_textures.has(key):
+		_check_textures[key] = _make_check_icon(filled)
+	return _check_textures[key]
 
 
 ## Toggle the Completed Only sort: on = completed first, off = uncompleted first.
-func _on_completed_only_pressed() -> void:
-	_completed_only = not _completed_only
+func _on_completed_only_toggled(pressed: bool) -> void:
+	_completed_only = pressed
 	_scroll_offset = 0
-	_sync_filter_buttons()
 	queue_redraw()
 
 
@@ -347,15 +377,11 @@ func _layout_tab_buttons() -> void:
 		b.size = Vector2(width, TAB_BAR_H)
 		x += width + TAB_GAP
 
-	var fy := y + TAB_BAR_H + TAB_GAP
-	var pill_y := fy + (FILTER_BAR_H - PILL_H) * 0.5
-	var fx := r.position.x + POPUP_PADDING
-	for i in range(_filter_buttons.size()):
-		var f: Button = _filter_buttons[i]
-		var fw := _text_font.get_string_size(FILTER_LABELS[i], HORIZONTAL_ALIGNMENT_LEFT, -1, FILTER_FONT_SIZE).x + TAB_PADDING_X
-		f.position = Vector2(fx, pill_y)
-		f.size = Vector2(fw, PILL_H)
-		fx += fw + TAB_GAP
+	if _completed_only_toggle != null:
+		var col1: Rect2 = _filter_columns()[0]
+		var center := _filter_row2_center_y()
+		_completed_only_toggle.position = Vector2(col1.position.x, center - CHECKBOX_ICON_SIZE * 0.5)
+		_completed_only_toggle.size = Vector2(_completed_only_width(), CHECKBOX_ICON_SIZE)
 
 
 func _anchor() -> void:
@@ -445,11 +471,10 @@ func _draw_cell(cell_rect: Rect2, row: int, column: int, color: Color) -> void:
 
 # --- Content routing --------------------------------------------------------
 
-## The panel takes up the full viewport height (the previous two-thirds height
-## increased by 50%), clamped by the popup margin in _popup_rect(). The height is
-## constant across tabs.
+## The panel takes up the full viewport height, clamped by the popup margin in
+## _popup_rect(). The height is constant across tabs.
 func _popup_height() -> float:
-	return _viewport_size().y * 2.0 / 3.0 * 1.5
+	return _viewport_size().y
 
 
 ## How many Cheevos cards fit in the content area at the current panel height.
@@ -461,6 +486,7 @@ func _cheevo_visible_rows() -> int:
 func _draw_content(rect: Rect2) -> void:
 	var content := _content_rect(rect)
 	if _tab == TAB_CHEEVOS:
+		_draw_completed_only_label()
 		_draw_progress_section(rect)
 		_draw_cheevos(content)
 	else:
@@ -524,34 +550,36 @@ func _cheevos_progress_label() -> String:
 	return "%d / %d" % [AchievementStore.earned_count(_achievements), _cheevo_entries().size()]
 
 
-## Draw the "BRAIN CELLS COLLECTED" label to the left of the "X / Y" count on
-## one baseline, with the rainbow progress bar underneath.
-func _draw_progress_section(rect: Rect2) -> void:
-	var inner_left := rect.position.x + POPUP_PADDING
-	var inner_w := rect.size.x - POPUP_PADDING * 2.0
-	var row_y := rect.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
-	var right := inner_left + inner_w
+## Draw the right filter column: "BRAIN CELLS COLLECTED" and the "X / Y" count on
+## the shared baseline, with the rainbow progress bar right-aligned underneath.
+## The bar is clamped to the column width so it never spills into the left column.
+func _draw_progress_section(_rect: Rect2) -> void:
+	var cols := _filter_columns()
+	var col2: Rect2 = cols[1]
+	var right := col2.position.x + col2.size.x
+	var baseline := _filter_baseline_y()
 
 	# Count on the right, label to its left, sharing one baseline.
 	var count := _cheevos_progress_label()
 	var cw := _text_font.get_string_size(count, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_COUNT_FONT_SIZE).x
 	var count_x := right - cw
 	_draw_text_shadow(
-		Vector2(count_x, row_y + 9.0),
+		Vector2(count_x, baseline),
 		count, HEADER_COLOR, PROGRESS_COUNT_FONT_SIZE,
 		HORIZONTAL_ALIGNMENT_LEFT, cw)
 
 	var label := "BRAIN CELLS COLLECTED"
 	var lw := _text_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_LABEL_FONT_SIZE).x
 	_draw_text_shadow(
-		Vector2(count_x - 8.0 - lw, row_y + 9.0),
+		Vector2(count_x - 8.0 - lw, baseline),
 		label, DESCRIPTION_COLOR, PROGRESS_LABEL_FONT_SIZE,
 		HORIZONTAL_ALIGNMENT_LEFT, lw)
 
-	# Rainbow progress bar underneath.
-	var bar_x := right - PROGRESS_BAR_W
-	var bar_y := row_y + 13.0
-	var track := Rect2(Vector2(bar_x, bar_y), Vector2(PROGRESS_BAR_W, PROGRESS_BAR_H))
+	# Rainbow progress bar underneath, right-aligned and clamped to the column.
+	var bar_w := minf(PROGRESS_BAR_W, col2.size.x)
+	var bar_x := right - bar_w
+	var bar_y := _progress_bar_y()
+	var track := Rect2(Vector2(bar_x, bar_y), Vector2(bar_w, PROGRESS_BAR_H))
 	draw_rect(track, Color(0.0, 0.0, 0.0, 0.4))
 	draw_rect(track, BORDER_COLOR, false, 1.0)
 	var total := _cheevo_entries().size()
@@ -560,8 +588,25 @@ func _draw_progress_section(rect: Rect2) -> void:
 		var frac := float(earned) / float(total)
 		var fill_rect := Rect2(
 			Vector2(bar_x + 1.0, bar_y + 1.0),
-			Vector2((PROGRESS_BAR_W - 2.0) * frac, PROGRESS_BAR_H - 2.0))
+			Vector2((bar_w - 2.0) * frac, PROGRESS_BAR_H - 2.0))
 		draw_texture_rect(_rainbow_texture(), fill_rect, false)
+
+
+## Draw the left filter column: the tick and "Completed Only", on the shared
+## baseline. The tick is vertically centered on the label's cap height.
+func _draw_completed_only_label() -> void:
+	var cols := _filter_columns()
+	var col1: Rect2 = cols[0]
+	var center := _filter_row2_center_y()
+	var cap := _text_font.get_ascent(FILTER_FONT_SIZE) * 0.5
+	var tick_rect := Rect2(
+		Vector2(col1.position.x, center - CHECKBOX_ICON_SIZE * 0.5),
+		Vector2(CHECKBOX_ICON_SIZE, CHECKBOX_ICON_SIZE))
+	draw_texture_rect(_check_texture(_completed_only), tick_rect, false)
+	var label_x := col1.position.x + CHECKBOX_ICON_SIZE + CHECKBOX_LABEL_GAP
+	_draw_text_shadow(
+		Vector2(label_x, center + cap),
+		COMPLETED_ONLY_LABEL, DESCRIPTION_COLOR, FILTER_FONT_SIZE)
 
 
 ## A horizontal rainbow gradient used to fill the progress bar.
@@ -611,8 +656,8 @@ func _cheevo_icon(entry: Dictionary) -> Texture2D:
 	return tex
 
 
-## Draw the Cheevos list as cards: checkbox, reaction icon, title, description
-## (or teaser), and a trophy.
+## Draw the Cheevos list as cards: reaction icon, title, body (description or
+## teaser), and a trophy badge.
 func _draw_cheevos(rect: Rect2) -> void:
 	var inner_left := rect.position.x + POPUP_PADDING
 	var inner_w := rect.size.x - POPUP_PADDING * 2.0
@@ -736,7 +781,7 @@ func _draw_trophy(rect: Rect2, earned: bool) -> void:
 		PanelIcons.draw_fit(self, tex, rect)
 		return
 	draw_texture_rect(tex, rect, false, Color(0.45, 0.48, 0.55, 0.5))
-	var q := _qmark()
+	var q := _panel_icon("qMark.png")
 	if q != null:
 		var qs := rect.size * 0.6
 		var qrect := Rect2(rect.position + (rect.size - qs) * 0.5, qs)

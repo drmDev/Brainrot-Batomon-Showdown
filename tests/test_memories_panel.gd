@@ -219,9 +219,9 @@ func test_visible_cheevo_entries_order() -> void:
 func test_completed_only_toggle() -> void:
 	var panel = _panel()
 	assert_false(panel._completed_only)
-	panel._on_completed_only_pressed()
+	panel._on_completed_only_toggled(true)
 	assert_true(panel._completed_only)
-	panel._on_completed_only_pressed()
+	panel._on_completed_only_toggled(false)
 	assert_false(panel._completed_only)
 	panel.free()
 
@@ -240,6 +240,54 @@ func test_all_filter_sorts_uncompleted_first_alphabetical() -> void:
 
 
 func test_cheevo_description_for_known_and_unknown() -> void:
-	assert_eq(ReactionText.description_for("over_9000"), "Reach over 9000 shop income.")
+	assert_eq(ReactionText.description_for("over_9000"), "Hit 9000+ of a battle metric or over 9000 shop income.")
 	assert_eq(ReactionText.description_for("big_dog_best_dog"), "Put up over 1,000,000 shield with a Cinnabark.")
 	assert_eq(ReactionText.description_for("nope"), "")
+
+
+func test_filter_row_sits_directly_below_tab_row() -> void:
+	var panel = _panel()
+	var row: Rect2 = panel._filter_row_rect()
+	var popup: Rect2 = panel._popup_rect()
+	var expected_y: float = popup.position.y + MemoriesPanel.TITLE_H + MemoriesPanel.POPUP_PADDING + MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP
+	assert_eq(row.position.y, expected_y)
+	assert_eq(row.position.x, popup.position.x + MemoriesPanel.POPUP_PADDING)
+	assert_eq(row.size.x, popup.size.x - MemoriesPanel.POPUP_PADDING * 2.0)
+	assert_eq(row.size.y, MemoriesPanel.FILTER_BAR_H)
+	panel.free()
+
+
+func test_filter_columns_are_contiguous_and_cover_row() -> void:
+	var panel = _panel()
+	var row: Rect2 = panel._filter_row_rect()
+	var cols: Array = panel._filter_columns()
+	var col1: Rect2 = cols[0]
+	var col2: Rect2 = cols[1]
+	assert_eq(col1.position, row.position)
+	assert_eq(col2.position.x, col1.position.x + col1.size.x)
+	assert_eq(col2.position.x + col2.size.x, row.position.x + row.size.x)
+	panel.free()
+
+
+func test_filter_baseline_is_inside_row() -> void:
+	var panel = _panel()
+	var row: Rect2 = panel._filter_row_rect()
+	var baseline: float = panel._filter_baseline_y()
+	assert_true(baseline > row.position.y)
+	assert_true(baseline < row.position.y + row.size.y)
+	panel.free()
+
+
+func test_completed_only_toggle_sits_in_row2_column1() -> void:
+	var panel = _panel()
+	panel._layout_tab_buttons()
+	var toggle: Button = panel._completed_only_toggle
+	var col1: Rect2 = panel._filter_columns()[0]
+	var row: Rect2 = panel._filter_row_rect()
+	assert_eq(toggle.position.x, col1.position.x)
+	assert_eq(toggle.position.y + toggle.size.y * 0.5, panel._filter_row2_center_y())
+	assert_true(panel._filter_row2_center_y() > panel._filter_baseline_y())
+	assert_true(toggle.position.y >= row.position.y)
+	assert_true(toggle.position.y + toggle.size.y <= row.position.y + row.size.y)
+	assert_true(toggle.size.x <= col1.size.x)
+	panel.free()
