@@ -32,7 +32,7 @@ const HEADER_LABELS := ["Metric", "Best", "Unit", "Date Acquired"]
 
 # The Memories panel is wider than the other shop modals so the reaction cards
 # fit an icon, two text lines, and a trophy without crowding.
-const PANEL_WIDTH := 420.0
+const PANEL_WIDTH := 294.0
 
 # --- Tabs -------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ const TAB_ICON_SIZE := 12
 # The All / Completed Only pill toggles and the progress section sit on a second
 # row under the tabs (Cheevos tab only). The row is tall enough for the stacked
 # "BRAIN CELLS COLLECTED" label, count, and bar on the right.
-const FILTER_LABELS := ["All", "Completed Only"]
+const FILTER_LABELS := ["Completed Only"]
 const FILTER_BAR_H := 26.0
 const FILTER_GAP := 2.0
 const FILTER_FONT_SIZE := 7
@@ -96,12 +96,17 @@ var _italic_font: SystemFont
 var _icon_cache: Dictionary = {}
 var _trophy_texture: Texture2D = null
 var _trophy_loaded := false
-var _smily_texture: Texture2D = null
-var _smily_loaded := false
+var _smily_left_texture: Texture2D = null
+var _smily_left_loaded := false
+var _smily_right_texture: Texture2D = null
+var _smily_right_loaded := false
 var _hs_chart_texture: Texture2D = null
 var _hs_chart_loaded := false
+var _qmark_texture: Texture2D = null
+var _qmark_loaded := false
 var _card_done_style: StyleBoxFlat
 var _card_locked_style: StyleBoxFlat
+var _rainbow_tex: ImageTexture = null
 
 
 func _init() -> void:
@@ -129,6 +134,8 @@ func set_tab(index: int) -> void:
 	if index != TAB_HIGH_SCORES and index != TAB_CHEEVOS:
 		return
 	if index == _tab:
+		# Re-sync so clicking the active tab does not leave it visually unpressed.
+		_sync_tab_buttons()
 		return
 	_tab = index
 	_scroll_offset = 0
@@ -152,11 +159,12 @@ func _popup_title() -> String:
 	return "Brain Rot Memories"
 
 
-## Draw the title flanked by the smilyBrain icon on both sides.
+## Draw the title flanked by the left/right smilyBrain icons, facing away.
 func _draw_popup() -> void:
 	super._draw_popup()
-	var tex := _smily_brain()
-	if tex == null:
+	var left := _smily_left()
+	var right := _smily_right()
+	if left == null and right == null:
 		return
 	var r := _popup_rect()
 	var title := _popup_title()
@@ -165,8 +173,10 @@ func _draw_popup() -> void:
 	var y := r.position.y + (TITLE_H - HEADER_ICON_SIZE) * 0.5
 	var left_x := center_x - tw * 0.5 - HEADER_ICON_GAP - HEADER_ICON_SIZE
 	var right_x := center_x + tw * 0.5 + HEADER_ICON_GAP
-	PanelIcons.draw_fit(self, tex, Rect2(Vector2(left_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
-	PanelIcons.draw_fit(self, tex, Rect2(Vector2(right_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
+	if left != null:
+		PanelIcons.draw_fit(self, left, Rect2(Vector2(left_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
+	if right != null:
+		PanelIcons.draw_fit(self, right, Rect2(Vector2(right_x, y), Vector2(HEADER_ICON_SIZE, HEADER_ICON_SIZE)))
 
 
 ## The Memories panel is wider than the shared modal default.
@@ -247,26 +257,43 @@ func _build_tab_buttons() -> void:
 		f.add_theme_color_override("font_hover_color", DESCRIPTION_COLOR)
 		f.add_theme_color_override("font_pressed_color", BG_COLOR)
 		f.add_theme_color_override("font_hover_pressed_color", BG_COLOR)
-		f.pressed.connect(_on_filter_pressed.bind(i))
+		f.pressed.connect(_on_completed_only_pressed)
 		add_child(f)
 		_filter_buttons.append(f)
 	_sync_tab_buttons()
 
 
-## The High Scores tab icon (assets/icons/hsChart.png), loaded once.
+## The High Scores tab icon (assets/icons/sInvader.png, with a baked 1px white
+## border), loaded once.
 func _hs_chart_icon() -> Texture2D:
 	if not _hs_chart_loaded:
 		_hs_chart_loaded = true
-		_hs_chart_texture = PanelIcons.load_icon(str(get_script().resource_path), "hsChart.png")
+		_hs_chart_texture = PanelIcons.load_icon(str(get_script().resource_path), "sInvader.png")
 	return _hs_chart_texture
 
 
-## The header brain icon (assets/icons/smilyBrain.png), loaded once.
-func _smily_brain() -> Texture2D:
-	if not _smily_loaded:
-		_smily_loaded = true
-		_smily_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrain.png")
-	return _smily_texture
+## The left header brain icon (assets/icons/smilyBrainLeft.png), loaded once.
+func _smily_left() -> Texture2D:
+	if not _smily_left_loaded:
+		_smily_left_loaded = true
+		_smily_left_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrainLeft.png")
+	return _smily_left_texture
+
+
+## The right header brain icon (assets/icons/smilyBrainRight.png), loaded once.
+func _smily_right() -> Texture2D:
+	if not _smily_right_loaded:
+		_smily_right_loaded = true
+		_smily_right_texture = PanelIcons.load_icon(str(get_script().resource_path), "smilyBrainRight.png")
+	return _smily_right_texture
+
+
+## The red question-mark icon (assets/icons/qMark.png), loaded once.
+func _qmark() -> Texture2D:
+	if not _qmark_loaded:
+		_qmark_loaded = true
+		_qmark_texture = PanelIcons.load_icon(str(get_script().resource_path), "qMark.png")
+	return _qmark_texture
 
 
 ## The game's gold trophy texture, loaded once. Guarded by ResourceLoader.exists
@@ -289,20 +316,17 @@ func _sync_tab_buttons() -> void:
 	_sync_filter_buttons()
 
 
-## Keep the filter pills' pressed state and visibility in sync.
+## Keep the filter toggle's pressed state and visibility in sync.
 func _sync_filter_buttons() -> void:
 	for i in range(_filter_buttons.size()):
 		var b: Button = _filter_buttons[i]
-		b.button_pressed = ((i == 1) == _completed_only)
+		b.button_pressed = _completed_only
 		b.visible = _popup_open and _tab == TAB_CHEEVOS
 
 
-## Select a Cheevos view: index 0 = All, index 1 = Completed Only.
-func _on_filter_pressed(index: int) -> void:
-	var completed_only := (index == 1)
-	if completed_only == _completed_only:
-		return
-	_completed_only = completed_only
+## Toggle the Completed Only sort: on = completed first, off = uncompleted first.
+func _on_completed_only_pressed() -> void:
+	_completed_only = not _completed_only
 	_scroll_offset = 0
 	_sync_filter_buttons()
 	queue_redraw()
@@ -472,9 +496,9 @@ func _is_earned(id: String) -> bool:
 	return reactions is Dictionary and reactions.has(id)
 
 
-## The Cheevos entries shown under the current view. The all view shows
-## uncompleted reactions first, then completed, each group in alphabetical
-## order; the completed-only view shows just the earned reactions, alphabetical.
+## The Cheevos entries shown under the current sort. Default: uncompleted first,
+## then completed. Completed Only toggle: completed first, then uncompleted.
+## Each group is alphabetical.
 func _visible_cheevo_entries() -> Array:
 	var not_done: Array = []
 	var done: Array = []
@@ -486,7 +510,7 @@ func _visible_cheevo_entries() -> Array:
 	not_done.sort_custom(_compare_by_title)
 	done.sort_custom(_compare_by_title)
 	if _completed_only:
-		return done
+		return done + not_done
 	return not_done + done
 
 
@@ -500,30 +524,33 @@ func _cheevos_progress_label() -> String:
 	return "%d / %d" % [AchievementStore.earned_count(_achievements), _cheevo_entries().size()]
 
 
-## Draw the "BRAIN CELLS COLLECTED" label, the "X / Y" count, and the progress
-## bar as one right-aligned group on the filter row.
+## Draw the "BRAIN CELLS COLLECTED" label to the left of the "X / Y" count on
+## one baseline, with the rainbow progress bar underneath.
 func _draw_progress_section(rect: Rect2) -> void:
 	var inner_left := rect.position.x + POPUP_PADDING
 	var inner_w := rect.size.x - POPUP_PADDING * 2.0
 	var row_y := rect.position.y + TITLE_H + POPUP_PADDING + TAB_BAR_H + TAB_GAP
 	var right := inner_left + inner_w
 
-	var label := "BRAIN CELLS COLLECTED"
-	var lw := _text_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_LABEL_FONT_SIZE).x
-	_draw_text_shadow(
-		Vector2(right - lw, row_y + 7.0),
-		label, DESCRIPTION_COLOR, PROGRESS_LABEL_FONT_SIZE,
-		HORIZONTAL_ALIGNMENT_LEFT, lw)
-
+	# Count on the right, label to its left, sharing one baseline.
 	var count := _cheevos_progress_label()
 	var cw := _text_font.get_string_size(count, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_COUNT_FONT_SIZE).x
+	var count_x := right - cw
 	_draw_text_shadow(
-		Vector2(right - cw, row_y + 17.0),
+		Vector2(count_x, row_y + 9.0),
 		count, HEADER_COLOR, PROGRESS_COUNT_FONT_SIZE,
 		HORIZONTAL_ALIGNMENT_LEFT, cw)
 
+	var label := "BRAIN CELLS COLLECTED"
+	var lw := _text_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, PROGRESS_LABEL_FONT_SIZE).x
+	_draw_text_shadow(
+		Vector2(count_x - 8.0 - lw, row_y + 9.0),
+		label, DESCRIPTION_COLOR, PROGRESS_LABEL_FONT_SIZE,
+		HORIZONTAL_ALIGNMENT_LEFT, lw)
+
+	# Rainbow progress bar underneath.
 	var bar_x := right - PROGRESS_BAR_W
-	var bar_y := row_y + 20.0
+	var bar_y := row_y + 13.0
 	var track := Rect2(Vector2(bar_x, bar_y), Vector2(PROGRESS_BAR_W, PROGRESS_BAR_H))
 	draw_rect(track, Color(0.0, 0.0, 0.0, 0.4))
 	draw_rect(track, BORDER_COLOR, false, 1.0)
@@ -531,9 +558,21 @@ func _draw_progress_section(rect: Rect2) -> void:
 	var earned := AchievementStore.earned_count(_achievements)
 	if total > 0 and earned > 0:
 		var frac := float(earned) / float(total)
-		draw_rect(
-			Rect2(Vector2(bar_x + 1.0, bar_y + 1.0), Vector2((PROGRESS_BAR_W - 2.0) * frac, PROGRESS_BAR_H - 2.0)),
-			BORDER_COLOR)
+		var fill_rect := Rect2(
+			Vector2(bar_x + 1.0, bar_y + 1.0),
+			Vector2((PROGRESS_BAR_W - 2.0) * frac, PROGRESS_BAR_H - 2.0))
+		draw_texture_rect(_rainbow_texture(), fill_rect, false)
+
+
+## A horizontal rainbow gradient used to fill the progress bar.
+func _rainbow_texture() -> ImageTexture:
+	if _rainbow_tex == null:
+		var w := 64
+		var image := Image.create(w, 1, false, Image.FORMAT_RGBA8)
+		for x in range(w):
+			image.set_pixel(x, 0, Color.from_hsv(float(x) / float(w), 0.8, 1.0))
+		_rainbow_tex = ImageTexture.create_from_image(image)
+	return _rainbow_tex
 
 
 ## The maximum scroll offset for the Cheevos list (0 when everything fits).
@@ -688,7 +727,7 @@ func _card_style(earned: bool) -> StyleBoxFlat:
 	return _card_locked_style
 
 
-## Draw the trophy: full colour when earned, dimmed with a "?" when locked.
+## Draw the trophy: full colour when earned, dimmed with the red qMark when locked.
 func _draw_trophy(rect: Rect2, earned: bool) -> void:
 	var tex := _trophy()
 	if tex == null:
@@ -697,12 +736,11 @@ func _draw_trophy(rect: Rect2, earned: bool) -> void:
 		PanelIcons.draw_fit(self, tex, rect)
 		return
 	draw_texture_rect(tex, rect, false, Color(0.45, 0.48, 0.55, 0.5))
-	var q := "?"
-	var qw := _text_font.get_string_size(q, HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE).x
-	draw_string(
-		_text_font,
-		Vector2(rect.position.x + (rect.size.x - qw) * 0.5, rect.position.y + rect.size.y * 0.72),
-		q, HORIZONTAL_ALIGNMENT_LEFT, -1, BODY_FONT_SIZE, CHEEVO_DIM_COLOR)
+	var q := _qmark()
+	if q != null:
+		var qs := rect.size * 0.6
+		var qrect := Rect2(rect.position + (rect.size - qs) * 0.5, qs)
+		PanelIcons.draw_fit(self, q, qrect)
 
 
 ## Draw an undiscovered row's teaser in italic. The italic font is a SystemFont

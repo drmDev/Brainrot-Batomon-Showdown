@@ -201,25 +201,27 @@ func test_is_earned_reflects_store() -> void:
 	panel.free()
 
 
-func test_visible_cheevo_entries_filter_by_mode() -> void:
+func test_visible_cheevo_entries_order() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}}})
-	# Unchecked (default): all reactions, completed first.
-	assert_eq(panel._visible_cheevo_entries().size(), panel._cheevo_entries().size())
-	# Checked: only completed reactions.
+	# Default: uncompleted first, completed last.
+	var default_entries := panel._visible_cheevo_entries()
+	assert_eq(default_entries.size(), panel._cheevo_entries().size())
+	assert_eq(str(default_entries[default_entries.size() - 1].get("id", "")), "over_9000")
+	# Completed Only toggle: completed first, uncompleted after.
 	panel._completed_only = true
-	var done := panel._visible_cheevo_entries()
-	assert_eq(done.size(), 1)
-	assert_eq(str(done[0].get("id", "")), "over_9000")
+	var toggled := panel._visible_cheevo_entries()
+	assert_eq(toggled.size(), panel._cheevo_entries().size())
+	assert_eq(str(toggled[0].get("id", "")), "over_9000")
 	panel.free()
 
 
-func test_filter_pills_set_view() -> void:
+func test_completed_only_toggle() -> void:
 	var panel = _panel()
 	assert_false(panel._completed_only)
-	panel._on_filter_pressed(1)
+	panel._on_completed_only_pressed()
 	assert_true(panel._completed_only)
-	panel._on_filter_pressed(0)
+	panel._on_completed_only_pressed()
 	assert_false(panel._completed_only)
 	panel.free()
 
