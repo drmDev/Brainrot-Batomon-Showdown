@@ -56,6 +56,10 @@ func _popup_title() -> String:
 	return ""
 
 
+func _popup_width() -> float:
+	return POPUP_WIDTH
+
+
 func _popup_height() -> float:
 	return TITLE_H + POPUP_PADDING * 2.0
 
@@ -137,7 +141,7 @@ func _close_popup() -> void:
 
 func _popup_rect() -> Rect2:
 	var viewport_size := _viewport_size()
-	var w := minf(POPUP_WIDTH, viewport_size.x - VIEWPORT_MARGIN * 2.0)
+	var w := minf(_popup_width(), viewport_size.x - VIEWPORT_MARGIN * 2.0)
 	var h := minf(_popup_height(), viewport_size.y - VIEWPORT_MARGIN * 2.0)
 	var x := roundf((viewport_size.x - w) * 0.5)
 	var y := roundf((viewport_size.y - h) * 0.5)

@@ -146,8 +146,7 @@ This is the Brain Rot adaptation of Creature Comforts' HUD sizing approach
 | `hud/toast_preview_panel.gd` | Dev-only preview button/panel: Reaction and Case dropdowns plus inputs for the selected template's placeholders; Play renders the same match as gameplay. |
 | `hud/panel_icons.gd` | Shared loader/drawer for loose mod icons (close box). |
 | `hud/shop_modal_panel.gd` | Shared shop icon-button modal scaffolding (button, frame, close box, click-outside/Escape close). |
-| `hud/table_modal_panel.gd` | Shared row-table layout for shop modals. |
-| `hud/memories_panel.gd` | The shop's Brain Rot Memories modal (rainbow brain button): a High Scores table plus a Cheevos list of registered Reaction titles with an "X of Y" progress label. |
+| `hud/memories_panel.gd` | The shop's Brain Rot Memories modal (rainbow brain button), built from Godot Controls on `shop_modal_panel.gd`: a tab ButtonGroup, a GridContainer High Scores table, and a ScrollContainer of Cheevos cards with a Completed Only CheckBox and a ProgressBar. |
 | `audio/ui_sound.gd` | Lazy one-shot OGG player adapted from Creature Comforts, with optional per-sound volume. |
 | `audio/reaction_sounds.gd` | Reaction audio derived from each catalog entry's `sound` block; lazy per-file players. |
 | `battle/battle_completion_detector.gd` | Owns when battle evaluation happens: `is_pending(state)` (non-consuming) and `consume()` after a usable snapshot exists. |

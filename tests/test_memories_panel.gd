@@ -10,16 +10,32 @@ func _panel():
 	return MemoriesPanel.new()
 
 
+# --- Popup and tables -------------------------------------------------------
+
 func test_popup_title_is_brain_rot_memories() -> void:
 	var panel = _panel()
 	assert_eq(panel._popup_title(), "Brain Rot Memories")
 	panel.free()
 
 
-func test_table_has_metric_best_unit_columns() -> void:
+func test_popup_width_is_memories_width() -> void:
 	var panel = _panel()
-	assert_eq(panel._table_header_labels(), ["Metric", "Best", "Unit", "Date Acquired"])
+	assert_eq(panel._popup_width(), MemoriesPanel.PANEL_WIDTH)
+	panel.free()
+
+
+func test_table_has_metric_best_unit_columns() -> void:
+	assert_eq(MemoriesPanel.HEADER_LABELS, ["METRIC", "BEST", "UNIT", "SET ON"])
+	var panel = _panel()
 	assert_eq(panel._table_row_count(), Catalog.BATTLE_METRIC_ORDER.size())
+	panel.free()
+
+
+func test_table_grid_has_header_and_body_cells() -> void:
+	var panel = _panel()
+	assert_eq(panel._table.get_child_count(), 1 + panel._table_row_count())
+	for row in panel._table.get_children():
+		assert_eq(row.get_child_count(), MemoriesPanel.HEADER_LABELS.size())
 	panel.free()
 
 
@@ -45,6 +61,17 @@ func test_cell_text_shows_dash_when_missing() -> void:
 	assert_eq(panel._table_cell_text(0, 3), "\u2014")
 	panel.free()
 
+
+func test_popup_height_identical_across_tabs() -> void:
+	var panel = _panel()
+	var high_scores_h := panel._popup_height()
+	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
+	var cheevos_h := panel._popup_height()
+	assert_eq(high_scores_h, cheevos_h)
+	panel.free()
+
+
+# --- Open, close, tabs ------------------------------------------------------
 
 func test_open_and_close_toggle() -> void:
 	var panel = _panel()
@@ -87,6 +114,31 @@ func test_set_tab_switches_and_ignores_invalid() -> void:
 	panel.free()
 
 
+func test_tab_buttons_share_exclusive_group() -> void:
+	var panel = _panel()
+	assert_eq(panel._tab_buttons.size(), MemoriesPanel.TAB_LABELS.size())
+	for b in panel._tab_buttons:
+		assert_true(b.button_group == panel._tab_group)
+	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
+	assert_true(panel._tab_buttons[MemoriesPanel.TAB_CHEEVOS].button_pressed)
+	assert_false(panel._tab_buttons[MemoriesPanel.TAB_HIGH_SCORES].button_pressed)
+	panel.free()
+
+
+func test_tab_visibility_follows_active_tab() -> void:
+	var panel = _panel()
+	assert_true(panel._table.visible)
+	assert_false(panel._filter_row.visible)
+	assert_false(panel._cheevo_scroll.visible)
+	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
+	assert_false(panel._table.visible)
+	assert_true(panel._filter_row.visible)
+	assert_true(panel._cheevo_scroll.visible)
+	panel.free()
+
+
+# --- Cheevos data -----------------------------------------------------------
+
 func test_cheevo_entries_match_catalog_reactions() -> void:
 	var panel = _panel()
 	var entries = panel._cheevo_entries()
@@ -100,9 +152,8 @@ func test_cheevo_entries_match_catalog_reactions() -> void:
 
 func test_cheevo_titles_match_catalog() -> void:
 	var panel = _panel()
-	var entries = panel._cheevo_entries()
 	var titles: Array = []
-	for entry in entries:
+	for entry in panel._cheevo_entries():
 		titles.append(str(entry.get("title", "")))
 	assert_true(titles.has("IT'S OVER 9000!"))
 	assert_true(titles.has("BIG DOG, BEST DOG!"))
@@ -118,62 +169,10 @@ func test_cheevo_display_titles_are_title_case() -> void:
 	panel.free()
 
 
-func test_scroll_offset_clamps_at_both_ends() -> void:
+func test_cheevo_list_has_one_card_per_visible_entry() -> void:
 	var panel = _panel()
-	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
-	var max_offset := panel._max_scroll_offset()
-	assert_eq(panel._scroll_offset, 0)
-	# Wheel down past the end clamps to max.
-	for _i in range(max_offset + 5):
-		panel._scroll_offset = mini(panel._scroll_offset + 1, panel._max_scroll_offset())
-	assert_eq(panel._scroll_offset, max_offset)
-	# Wheel up past the start clamps to 0.
-	for _i in range(max_offset + 5):
-		panel._scroll_offset = maxi(panel._scroll_offset - 1, 0)
-	assert_eq(panel._scroll_offset, 0)
-	panel.free()
-
-
-func test_high_scores_cell_text_unchanged() -> void:
-	var panel = _panel()
-	panel.set_scores({
-		"metrics": {
-			"damage": {"value": 12345, "unit": "monster.name.cinnabark", "date_acquired": "11/18/26"},
-		},
-	})
-	assert_eq(panel._table_cell_text(0, 0), "Damage")
-	assert_eq(panel._table_cell_text(0, 1), "12.3K")
-	assert_eq(panel._table_cell_text(0, 2), "Cinnabark")
-	assert_eq(panel._table_cell_text(0, 3), "11/18/26")
-	panel.free()
-
-
-func test_popup_height_identical_across_tabs() -> void:
-	var panel = _panel()
-	var high_scores_h := panel._popup_height()
-	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
-	var cheevos_h := panel._popup_height()
-	assert_eq(high_scores_h, cheevos_h)
-	panel.free()
-
-
-func test_content_rect_offsets_by_tab_row_only() -> void:
-	var panel = _panel()
-	var r := Rect2(Vector2(10, 20), Vector2(320, 200))
-	var content := panel._content_rect(r)
-	assert_eq(content.position.y, r.position.y + MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP)
-	assert_eq(content.size.y, r.size.y - MemoriesPanel.TAB_BAR_H - MemoriesPanel.TAB_GAP)
-	panel.free()
-
-
-func test_content_rect_includes_filter_row_on_cheevos_tab() -> void:
-	var panel = _panel()
-	panel.set_tab(MemoriesPanel.TAB_CHEEVOS)
-	var r := Rect2(Vector2(10, 20), Vector2(320, 200))
-	var content := panel._content_rect(r)
-	var expected := MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP + MemoriesPanel.FILTER_BAR_H + MemoriesPanel.FILTER_GAP
-	assert_eq(content.position.y, r.position.y + expected)
-	assert_eq(content.size.y, r.size.y - expected)
+	assert_true(panel._cheevo_scroll is ScrollContainer)
+	assert_eq(panel._cheevo_list.get_child_count(), panel._visible_cheevo_entries().size())
 	panel.free()
 
 
@@ -182,6 +181,7 @@ func test_cheevos_progress_label_counts_earned() -> void:
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "big_dog_best_dog": {}}})
 	var expected := "2 / %d" % panel._cheevo_entries().size()
 	assert_eq(panel._cheevos_progress_label(), expected)
+	assert_eq(panel._progress_count.text, expected)
 	panel.free()
 
 
@@ -190,6 +190,14 @@ func test_cheevos_progress_label_starts_at_zero() -> void:
 	panel.set_achievements({"version": 1, "reactions": {}})
 	var expected := "0 / %d" % panel._cheevo_entries().size()
 	assert_eq(panel._cheevos_progress_label(), expected)
+	panel.free()
+
+
+func test_progress_bar_tracks_earned_count() -> void:
+	var panel = _panel()
+	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}}})
+	assert_eq(panel._progress_bar.value, 1.0)
+	assert_eq(panel._progress_bar.max_value, float(panel._cheevo_entries().size()))
 	panel.free()
 
 
@@ -205,12 +213,12 @@ func test_visible_cheevo_entries_order() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}}})
 	# Default: uncompleted first, completed last.
-	var default_entries := panel._visible_cheevo_entries()
+	var default_entries: Array = panel._visible_cheevo_entries()
 	assert_eq(default_entries.size(), panel._cheevo_entries().size())
 	assert_eq(str(default_entries[default_entries.size() - 1].get("id", "")), "over_9000")
-	# Completed Only toggle: completed first, uncompleted after.
+	# Completed Only: completed first, uncompleted after.
 	panel._completed_only = true
-	var toggled := panel._visible_cheevo_entries()
+	var toggled: Array = panel._visible_cheevo_entries()
 	assert_eq(toggled.size(), panel._cheevo_entries().size())
 	assert_eq(str(toggled[0].get("id", "")), "over_9000")
 	panel.free()
@@ -226,10 +234,19 @@ func test_completed_only_toggle() -> void:
 	panel.free()
 
 
+func test_completed_only_toggle_drives_filter() -> void:
+	var panel = _panel()
+	panel._completed_only_toggle.button_pressed = true
+	assert_true(panel._completed_only)
+	panel._completed_only_toggle.button_pressed = false
+	assert_false(panel._completed_only)
+	panel.free()
+
+
 func test_all_filter_sorts_uncompleted_first_alphabetical() -> void:
 	var panel = _panel()
 	panel.set_achievements({"version": 1, "reactions": {"over_9000": {}, "six_seven": {}}})
-	var entries = panel._visible_cheevo_entries()
+	var entries: Array = panel._visible_cheevo_entries()
 	# Uncompleted first, alphabetical: "Apes Together, Strong!" then "Big Dog, Best Dog!".
 	assert_eq(str(entries[0].get("id", "")), "apes_together")
 	assert_eq(str(entries[1].get("id", "")), "big_dog_best_dog")
@@ -243,51 +260,3 @@ func test_cheevo_description_for_known_and_unknown() -> void:
 	assert_eq(ReactionText.description_for("over_9000"), "Hit 9000+ of a battle metric or over 9000 shop income.")
 	assert_eq(ReactionText.description_for("big_dog_best_dog"), "Put up over 1,000,000 shield with a Cinnabark.")
 	assert_eq(ReactionText.description_for("nope"), "")
-
-
-func test_filter_row_sits_directly_below_tab_row() -> void:
-	var panel = _panel()
-	var row: Rect2 = panel._filter_row_rect()
-	var popup: Rect2 = panel._popup_rect()
-	var expected_y: float = popup.position.y + MemoriesPanel.TITLE_H + MemoriesPanel.POPUP_PADDING + MemoriesPanel.TAB_BAR_H + MemoriesPanel.TAB_GAP
-	assert_eq(row.position.y, expected_y)
-	assert_eq(row.position.x, popup.position.x + MemoriesPanel.POPUP_PADDING)
-	assert_eq(row.size.x, popup.size.x - MemoriesPanel.POPUP_PADDING * 2.0)
-	assert_eq(row.size.y, MemoriesPanel.FILTER_BAR_H)
-	panel.free()
-
-
-func test_filter_columns_are_contiguous_and_cover_row() -> void:
-	var panel = _panel()
-	var row: Rect2 = panel._filter_row_rect()
-	var cols: Array = panel._filter_columns()
-	var col1: Rect2 = cols[0]
-	var col2: Rect2 = cols[1]
-	assert_eq(col1.position, row.position)
-	assert_eq(col2.position.x, col1.position.x + col1.size.x)
-	assert_eq(col2.position.x + col2.size.x, row.position.x + row.size.x)
-	panel.free()
-
-
-func test_filter_baseline_is_inside_row() -> void:
-	var panel = _panel()
-	var row: Rect2 = panel._filter_row_rect()
-	var baseline: float = panel._filter_baseline_y()
-	assert_true(baseline > row.position.y)
-	assert_true(baseline < row.position.y + row.size.y)
-	panel.free()
-
-
-func test_completed_only_toggle_sits_in_row2_column1() -> void:
-	var panel = _panel()
-	panel._layout_tab_buttons()
-	var toggle: Button = panel._completed_only_toggle
-	var col1: Rect2 = panel._filter_columns()[0]
-	var row: Rect2 = panel._filter_row_rect()
-	assert_eq(toggle.position.x, col1.position.x)
-	assert_eq(toggle.position.y + toggle.size.y * 0.5, panel._filter_row2_center_y())
-	assert_true(panel._filter_row2_center_y() > panel._filter_baseline_y())
-	assert_true(toggle.position.y >= row.position.y)
-	assert_true(toggle.position.y + toggle.size.y <= row.position.y + row.size.y)
-	assert_true(toggle.size.x <= col1.size.x)
-	panel.free()
