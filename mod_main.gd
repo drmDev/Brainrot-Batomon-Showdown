@@ -14,7 +14,7 @@ extends Node
 ## writing to user://brain_rot/inspect.log. Console output is unchanged; user-visible
 ## events go to both console and file, diagnostics go to the file with a time prefix.
 
-const VERSION := "2.0"
+const VERSION := "2.1"
 const BATTLE_SCRIPT := "res://game/states/battle_state.gd"
 # Verified in BatomonHelperBridge (reads shop_state.manager/view). The shop is the
 # start of a day, the only phase where run-scoped reactions are evaluated.
