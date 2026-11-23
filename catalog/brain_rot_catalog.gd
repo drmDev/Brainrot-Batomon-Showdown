@@ -39,6 +39,34 @@ const BATTLE_METRICS := {
 ## Evaluation order for battle metrics. The first matching metric in a slot wins.
 const BATTLE_METRIC_ORDER := ["damage", "heal", "shield", "burn", "poison", "shock"]
 
+## High-score icon kinds: a species icon (the unit that set the record) or a
+## trainer portrait (the trainer whose run set the record).
+const ICON_UNIT := "unit"
+const ICON_TRAINER := "trainer"
+
+## High-score metric label -> metadata. `key` is the per-unit battle record key
+## (absent for battle/run-level metrics); `icon` is ICON_UNIT or ICON_TRAINER.
+## The first six labels are the per-unit battle metrics; the last three are
+## battle/run-level records.
+const HIGH_SCORE_METRICS := {
+	"damage": {"key": "damage_dealt", "icon": ICON_UNIT},
+	"heal": {"key": "healing_done", "icon": ICON_UNIT},
+	"shield": {"key": "shield_granted", "icon": ICON_UNIT},
+	"burn": {"key": "burn_inflicted", "icon": ICON_UNIT},
+	"poison": {"key": "poison_inflicted", "icon": ICON_UNIT},
+	"shock": {"key": "shock_inflicted", "icon": ICON_UNIT},
+	"longest_battle": {"icon": ICON_TRAINER},
+	"most_casts": {"key": "cast_count", "icon": ICON_UNIT},
+	"most_trinkets": {"icon": ICON_TRAINER},
+}
+
+## Display/evaluation order for the high-score table. The per-unit battle metrics
+## come first (matching BATTLE_METRIC_ORDER), then the battle/run-level records.
+const HIGH_SCORE_METRIC_ORDER := [
+	"damage", "heal", "shield", "burn", "poison", "shock",
+	"longest_battle", "most_casts", "most_trinkets",
+]
+
 ## Reaction ids. Definitions and tests reference these instead of string literals.
 const SIX_SEVEN := "six_seven"
 const SIX_NINE := "six_nine"

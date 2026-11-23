@@ -43,13 +43,15 @@ static func monster(name_key: String, level: int = 1, is_shiny: bool = false, pe
 	return FakeObject.new(props)
 
 
-## Build a run fake for the snapshot reader.
-static func run(trainer_id: String, day: int, team: Array = [], bench: Array = []):
+## Build a run fake for the snapshot reader. `trinket_ids` is exposed as the
+## run's held trinkets (the reader derives trinket_count from it).
+static func run(trainer_id: String, day: int, team: Array = [], bench: Array = [], trinket_ids: Array = []):
 	return FakeObject.new({
 		"trainer_id": trainer_id,
 		"current_round": day,
 		"team": team,
 		"bench": bench,
+		"trinket_ids": trinket_ids,
 	})
 
 
@@ -71,10 +73,13 @@ static func battle_unit_metrics(team_id: int, slot_index: int, props: Dictionary
 
 
 ## Build a battle state fake: state.simulation.data.battle_units + battle_over.
-static func battle_state(units: Array, battle_over: bool = true):
-	var data := FakeObject.new({
+## `extra` is merged into simulation.data (e.g. {"time_elapsed": 12.3}).
+static func battle_state(units: Array, battle_over: bool = true, extra: Dictionary = {}):
+	var props := {
 		"battle_units": units,
 		"battle_over": battle_over,
-	})
+	}
+	props.merge(extra, true)
+	var data := FakeObject.new(props)
 	var sim := FakeObject.new({"data": data})
 	return FakeObject.new({"simulation": sim})

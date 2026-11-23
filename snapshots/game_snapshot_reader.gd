@@ -14,6 +14,7 @@ extends RefCounted
 ##       "lives": int,                    # only when the run exposes a number
 ##       "current_wins": int,             # only when the run exposes a number
 ##       "income": int,                   # derived shop income (see _read_income)
+##       "trinket_count": int,            # size of run.trinket_ids when exposed
 ##       "team": [monster, ...],          # only when the run exposes it
 ##       "bench": [monster, ...],         # only when the run exposes it
 ##     }
@@ -21,6 +22,7 @@ extends RefCounted
 ##     {
 ##       "kind": "battle",
 ##       "battle_over": bool,             # only when the simulation data exposes it
+##       "time_elapsed": float,           # simulation.data.time_elapsed (seconds)
 ##       "battle_units": [unit, ...],     # only when the simulation data exposes it
 ##     }
 ##
@@ -30,7 +32,8 @@ extends RefCounted
 ## preserved (Big Dog resolves species by slot index).
 ## unit: {"team_id": int, "slot_index": int, "shield_granted": float,
 ##        "damage_dealt": float, "healing_done": float,
-##        "burn_inflicted": int, "poison_inflicted": int, "shock_inflicted": int},
+##        "burn_inflicted": int, "poison_inflicted": int, "shock_inflicted": int,
+##        "cast_count": int},
 ##   same rule. All are accumulated per-battle counters (verified against the game's
 ##   own battle numbers: burn_inflicted/poison_inflicted match the displayed totals,
 ##   while get_stat(4/5/6) is only the unit's stat and must not be used).
@@ -41,13 +44,13 @@ extends RefCounted
 ## (and never raises, unlike a bare int(null)).
 ##
 ## Verified field names:
-##   run: run_id, trainer_id, current_round, lives, current_wins, team, bench,
-##        _active_passives[].gold_gain (income derivation only)
+##   run: run_id, trainer_id, current_round, lives, current_wins, trinket_ids,
+##        team, bench, _active_passives[].gold_gain (income derivation only)
 ##   monster: data.name_key, level
-##   battle: simulation.data.battle_over,
+##   battle: simulation.data.battle_over, simulation.data.time_elapsed,
 ##           simulation.data.battle_units[].{team_id, slot_index, shield_granted,
 ##             damage_dealt, healing_done, burn_inflicted, poison_inflicted,
-##             shock_inflicted}
+##             shock_inflicted, cast_count}
 ##   (Verified in examples/MyBattleStats, the BatomonHelperBridge mod, and a live
 ##   field probe of a real battle.)
 
@@ -96,6 +99,9 @@ func read_battle(state, replay_run) -> Dictionary:
 
 	if _has_prop.call(data, "battle_over"):
 		snapshot["battle_over"] = bool(data.get("battle_over"))
+	var elapsed = _read_float(data, "time_elapsed")
+	if elapsed != null:
+		snapshot["time_elapsed"] = elapsed
 	if _has_prop.call(data, "battle_units"):
 		snapshot["battle_units"] = _read_battle_units(data.get("battle_units"))
 	return snapshot
@@ -130,6 +136,10 @@ func _read_run_fields(run, kind: String) -> Dictionary:
 	var day = snapshot.get("current_round")
 	if day is int:
 		snapshot["income"] = _read_income(run, int(day))
+	if _has_prop.call(run, "trinket_ids"):
+		var trinket_count = _read_collection_size(run.get("trinket_ids"))
+		if trinket_count != null:
+			snapshot["trinket_count"] = trinket_count
 	for list_name in ["team", "bench"]:
 		if _has_prop.call(run, list_name):
 			snapshot[list_name] = _read_monsters(run.get(list_name))
@@ -217,12 +227,22 @@ func _read_battle_units(units) -> Array:
 			var value = _read_float(unit, float_name)
 			if value != null:
 				entry[float_name] = value
-		for int_name in ["burn_inflicted", "poison_inflicted", "shock_inflicted"]:
+		for int_name in ["burn_inflicted", "poison_inflicted", "shock_inflicted", "cast_count"]:
 			var int_value = _read_int(unit, int_name)
 			if int_value != null:
 				entry[int_name] = int_value
 		out.append(entry)
 	return out
+
+
+## Size of an Array or PackedStringArray, or null when the value is not a
+## collection. Used for the run's held trinket ids.
+func _read_collection_size(value):
+	if value is Array:
+		return (value as Array).size()
+	if value is PackedStringArray:
+		return (value as PackedStringArray).size()
+	return null
 
 
 ## Integer value of a live object's property, or null when missing/null/non-numeric.

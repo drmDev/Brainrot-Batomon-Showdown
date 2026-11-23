@@ -409,4 +409,66 @@ func test_usable_false_without_battle_units() -> void:
 	assert_false(reader.is_battle_snapshot_usable(snapshot))
 
 
+# --- read_run: trinket count ---
+
+func test_read_run_captures_trinket_count() -> void:
+	var run = TestHelpers.run("gentleman", 3, [], [], ["a", "b", "c"])
+	assert_eq(_new_reader().read_run(run).get("trinket_count"), 3)
+
+
+func test_read_run_trinket_count_absent_when_missing() -> void:
+	var run = TestHelpers.FakeObject.new({"trainer_id": "gentleman"})
+	assert_false(_new_reader().read_run(run).has("trinket_count"))
+
+
+func test_read_run_trinket_count_accepts_packed_string_array() -> void:
+	var run = TestHelpers.FakeObject.new({
+		"trainer_id": "gentleman",
+		"trinket_ids": PackedStringArray(["a", "b"]),
+	})
+	assert_eq(_new_reader().read_run(run).get("trinket_count"), 2)
+
+
+func test_read_run_trinket_count_ignores_non_collection() -> void:
+	var run = TestHelpers.FakeObject.new({"trainer_id": "gentleman", "trinket_ids": "nope"})
+	assert_false(_new_reader().read_run(run).has("trinket_count"))
+
+
+# --- read_battle: elapsed time ---
+
+func test_read_battle_captures_time_elapsed() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)], true, {"time_elapsed": 12.5})
+	assert_eq(_new_reader().read_battle(state, run).get("time_elapsed"), 12.5)
+
+
+func test_read_battle_time_elapsed_absent_when_missing() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	assert_false(_new_reader().read_battle(state, run).has("time_elapsed"))
+
+
+func test_read_battle_time_elapsed_ignores_non_numeric() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)], true, {"time_elapsed": "nope"})
+	assert_false(_new_reader().read_battle(state, run).has("time_elapsed"))
+
+
+# --- read_battle: cast count ---
+
+func test_read_battle_unit_captures_cast_count() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var unit = TestHelpers.battle_unit_metrics(0, 0, {"cast_count": 7})
+	var state = TestHelpers.battle_state([unit])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_eq(entry.get("cast_count"), 7)
+
+
+func test_read_battle_unit_cast_count_absent_when_missing() -> void:
+	var run = TestHelpers.run("musician", 3, [])
+	var state = TestHelpers.battle_state([TestHelpers.battle_unit(0, 0, 1.0)])
+	var entry: Dictionary = _new_reader().read_battle(state, run)["battle_units"][0]
+	assert_false(entry.has("cast_count"))
+
+
 

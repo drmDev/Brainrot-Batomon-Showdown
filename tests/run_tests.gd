@@ -26,6 +26,7 @@ var _test_scripts := {
 	"reaction_player": preload("test_reaction_player.gd"),
 	"reaction_text": preload("test_reaction_text.gd"),
 	"species_icons": preload("test_species_icons.gd"),
+	"trainer_icons": preload("test_trainer_icons.gd"),
 	"toast_preview_panel": preload("test_toast_preview_panel.gd"),
 	"toast_view": preload("test_toast_view.gd"),
 }

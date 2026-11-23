@@ -25,9 +25,9 @@ func test_popup_width_is_memories_width() -> void:
 
 
 func test_table_has_metric_best_unit_columns() -> void:
-	assert_eq(MemoriesPanel.HEADER_LABELS, ["METRIC", "BEST", "UNIT", "SET ON"])
+	assert_eq(MemoriesPanel.HEADER_LABELS, ["METRIC", "BEST", "UNIT / TRAINER", "SET ON"])
 	var panel = _panel()
-	assert_eq(panel._table_row_count(), Catalog.BATTLE_METRIC_ORDER.size())
+	assert_eq(panel._table_row_count(), Catalog.HIGH_SCORE_METRIC_ORDER.size())
 	panel.free()
 
 
@@ -59,6 +59,45 @@ func test_cell_text_shows_dash_when_missing() -> void:
 	assert_eq(panel._table_cell_text(0, 1), "\u2014")
 	assert_eq(panel._table_cell_text(0, 2), "\u2014")
 	assert_eq(panel._table_cell_text(0, 3), "\u2014")
+	panel.free()
+
+
+func test_cell_text_shows_longest_battle_duration() -> void:
+	var panel = _panel()
+	panel.set_scores({
+		"metrics": {
+			"longest_battle": {"value": 125, "unit": "gentleman", "date_acquired": "11/18/26"},
+		},
+	})
+	assert_eq(panel._table_cell_text(6, 0), "Longest Battle")
+	assert_eq(panel._table_cell_text(6, 1), "2m 5s")
+	assert_eq(panel._table_cell_text(6, 2), "Gentleman")
+	panel.free()
+
+
+func test_cell_text_shows_most_casts() -> void:
+	var panel = _panel()
+	panel.set_scores({
+		"metrics": {
+			"most_casts": {"value": 9, "unit": "monster.name.rhizuka", "date_acquired": "11/18/26"},
+		},
+	})
+	assert_eq(panel._table_cell_text(7, 0), "Most Casts")
+	assert_eq(panel._table_cell_text(7, 1), "9")
+	assert_eq(panel._table_cell_text(7, 2), "Rhizuka")
+	panel.free()
+
+
+func test_cell_text_shows_most_trinkets() -> void:
+	var panel = _panel()
+	panel.set_scores({
+		"metrics": {
+			"most_trinkets": {"value": 6, "unit": "chef", "date_acquired": "11/18/26"},
+		},
+	})
+	assert_eq(panel._table_cell_text(8, 0), "Most Trinkets")
+	assert_eq(panel._table_cell_text(8, 1), "6")
+	assert_eq(panel._table_cell_text(8, 2), "Chef")
 	panel.free()
 
 

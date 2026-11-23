@@ -1,5 +1,5 @@
 extends RefCounted
-## HighScores - persistent per-metric best single-unit battle values.
+## HighScores - persistent per-metric best values.
 ##
 ## The store is a versioned JSON dictionary:
 ##   {
@@ -10,10 +10,13 @@ extends RefCounted
 ##     }
 ##   }
 ##
-## record_battle() computes the best single-unit value for each metric on the
-## player's team and records the unit that achieved it. It is idempotent (max),
-## so re-processing the same battle cannot lower a score. The store is global
-## across runs and is written only when a metric improves.
+## record_battle() computes the best single-unit value for each per-unit battle
+## metric on the player's team and records the unit that achieved it, plus the
+## longest battle duration (attributed to the player's trainer). record_run()
+## records the highest simultaneous trinket count (attributed to the trainer).
+## Both are idempotent (max), so re-processing the same battle or run cannot
+## lower a score. The store is global across runs and is written only when a
+## metric improves.
 ##
 ## Adapted from Creature Comforts (core/saved_builds.gd) for the JSON load/save
 ## pattern; the metric set comes from catalog/brain_rot_catalog.gd.
@@ -52,7 +55,7 @@ static func parse(text: String) -> Dictionary:
 	if not raw_metrics is Dictionary:
 		return store
 	var metrics := {}
-	for label in Catalog.BATTLE_METRIC_ORDER:
+	for label in Catalog.HIGH_SCORE_METRIC_ORDER:
 		var entry := _normalize_metric(raw_metrics.get(label))
 		if not entry.is_empty():
 			metrics[label] = entry
@@ -91,8 +94,9 @@ static func save_store(store: Dictionary, path: String = PATH) -> bool:
 	return true
 
 
-## Best single-unit value per metric for the player's team, plus the unit that
-## achieved it. Returns a Dictionary of improved metrics (empty when nothing
+## Best single-unit value per per-unit battle metric for the player's team, plus
+## the unit that achieved it, and the longest battle duration attributed to the
+## player's trainer. Returns a Dictionary of improved metrics (empty when nothing
 ## improved or the snapshot is not a completed battle). Mutates `store` in place.
 static func record_battle(store: Dictionary, battle_snapshot: Dictionary) -> Dictionary:
 	var improved := {}
@@ -113,14 +117,24 @@ static func record_battle(store: Dictionary, battle_snapshot: Dictionary) -> Dic
 			continue
 		var slot := int(unit.get("slot_index", -1))
 		var unit_key := _unit_name_key(team, slot)
-		for label in Catalog.BATTLE_METRIC_ORDER:
-			var key := str(Catalog.BATTLE_METRICS.get(label, ""))
+		for label in Catalog.HIGH_SCORE_METRICS:
+			var key := str(Catalog.HIGH_SCORE_METRICS[label].get("key", ""))
+			if key.is_empty():
+				continue
 			var value = unit.get(key)
 			if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
 				continue
 			var actual := int(value)
 			if actual > int(best.get(label, {}).get("value", 0)):
 				best[label] = {"value": actual, "unit": unit_key}
+
+	# Battle-level record: the simulation's own elapsed clock, attributed to the
+	# player's trainer (the icon shown in the table).
+	var elapsed = battle_snapshot.get("time_elapsed")
+	if typeof(elapsed) == TYPE_INT or typeof(elapsed) == TYPE_FLOAT:
+		var seconds := roundi(float(elapsed))
+		if seconds > 0:
+			best["longest_battle"] = {"value": seconds, "unit": str(battle_snapshot.get("trainer_id", ""))}
 
 	var metrics = store.get("metrics")
 	if not metrics is Dictionary:
@@ -142,6 +156,35 @@ static func record_battle(store: Dictionary, battle_snapshot: Dictionary) -> Dic
 	return improved
 
 
+## Highest simultaneous trinket count from a run snapshot, attributed to the
+## run's trainer. Returns the improved metric (empty when nothing improved or the
+## snapshot lacks a positive trinket count). Mutates `store` in place.
+static func record_run(store: Dictionary, run_snapshot: Dictionary) -> Dictionary:
+	var improved := {}
+	var count = run_snapshot.get("trinket_count")
+	if typeof(count) != TYPE_INT and typeof(count) != TYPE_FLOAT:
+		return improved
+	var value := int(count)
+	if value <= 0:
+		return improved
+	var metrics = store.get("metrics")
+	if not metrics is Dictionary:
+		metrics = {}
+		store["metrics"] = metrics
+	var previous := 0
+	var existing = metrics.get("most_trinkets")
+	if existing is Dictionary:
+		previous = int(existing.get("value", 0))
+	elif existing is int or existing is float:
+		previous = int(existing)
+	if value > previous:
+		var date_acquired := current_date_string()
+		var unit := str(run_snapshot.get("trainer_id", ""))
+		metrics["most_trinkets"] = {"value": value, "unit": unit, "date_acquired": date_acquired}
+		improved["most_trinkets"] = {"value": value, "previous": previous, "unit": unit, "date_acquired": date_acquired}
+	return improved
+
+
 ## Abbreviate a large number for display: 1,000,000+ -> "1.0M", 1,000+ -> "1.0K".
 static func format_value(value: int) -> String:
 	if value >= 1000000:
@@ -151,8 +194,27 @@ static func format_value(value: int) -> String:
 	return str(value)
 
 
-## Species name_key -> display name ("monster.name.cinnabark" -> "Cinnabark").
-## Mirrors the reaction evaluator's species formatting.
+## Display string for a metric's recorded value. Durations use a time format;
+## every other metric uses the abbreviated number format.
+static func format_metric_value(label: String, value: int) -> String:
+	if label == "longest_battle":
+		return format_duration(value)
+	return format_value(value)
+
+
+## Format a whole number of seconds as a battle duration: "12s" under a minute,
+## "2m 5s" otherwise.
+static func format_duration(seconds: int) -> String:
+	var total := maxi(seconds, 0)
+	if total < 60:
+		return "%ds" % total
+	var minutes := int(total / 60.0)
+	return "%dm %ds" % [minutes, total % 60]
+
+
+## Species name_key or trainer id -> display name ("monster.name.cinnabark" ->
+## "Cinnabark", "mad_scientist" -> "Mad Scientist"). Mirrors the reaction
+## evaluator's species formatting.
 static func format_unit(name_key: String) -> String:
 	if name_key.is_empty():
 		return "Unknown"

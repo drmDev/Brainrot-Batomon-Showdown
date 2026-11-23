@@ -2,9 +2,11 @@ extends "shop_modal_panel.gd"
 ## MemoriesPanel - the shop's Brain Rot Memories modal.
 ##
 ## The rainbow brain button opens a two-tab panel, built from Godot Controls:
-## - High Scores: a table of the best single-unit value per battle metric, with
-##   the unit that set each record. Each cell clips to its column so long names
-##   never push the other columns out of place.
+## - High Scores: a table of the best value per metric, with the unit or trainer
+##   that set each record. Per-unit metrics show the species icon; the battle and
+##   run records (longest battle, most trinkets) show the trainer portrait. Each
+##   cell clips to its column so long names never push the other columns out of
+##   place.
 ## - Cheevos: a ScrollContainer of reaction cards (icon, title, body, trophy).
 ##   Completed cards show the unlock description; locked ones show an italic
 ##   teaser. Default order is uncompleted first, then completed, each alphabetical.
@@ -19,6 +21,7 @@ extends "shop_modal_panel.gd"
 const HighScores = preload("../battle/high_scores.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const SpeciesIcons = preload("../catalog/species_icons.gd")
+const TrainerIcons = preload("../catalog/trainer_icons.gd")
 const AchievementStore = preload("../core/achievement_store.gd")
 const ReactionText = preload("../catalog/reaction_text.gd")
 
@@ -60,8 +63,9 @@ const FILTER_RIGHT_PAD := 10.0
 # --- High Scores table ------------------------------------------------------
 
 # Column shares of the table width. The Unit column is widest so species names
-# plus their icon stay legible.
-const COLUMN_FRACTIONS := [0.22, 0.15, 0.37, 0.26]
+# plus their icon stay legible; the Metric column is wide enough for the longest
+# label ("Longest Battle") without clipping.
+const COLUMN_FRACTIONS := [0.24, 0.15, 0.35, 0.26]
 # Per-column alignment, shared by the header and body so each column reads as
 # one unit: text left, numbers right, the icon+name Unit column left.
 const COLUMN_ALIGNMENTS := [
@@ -70,10 +74,10 @@ const COLUMN_ALIGNMENTS := [
 	HORIZONTAL_ALIGNMENT_LEFT,
 	HORIZONTAL_ALIGNMENT_LEFT,
 ]
-const HEADER_LABELS := ["METRIC", "BEST", "UNIT", "SET ON"]
+const HEADER_LABELS := ["METRIC", "BEST", "UNIT / TRAINER", "SET ON"]
 const CELL_PAD_X := 4.0
-const TABLE_ROW_H := 22.0
-const TABLE_ROW_GAP := 2
+const TABLE_ROW_H := 17.0
+const TABLE_ROW_GAP := 1
 const UNIT_ICON_SIZE := 16
 const UNIT_ICON_LIFT := 2.0
 const UNIT_ICON_GAP := 3
@@ -544,12 +548,12 @@ func _table_body_cell(row: int, column: int) -> Control:
 
 
 func _table_row_count() -> int:
-	return Catalog.BATTLE_METRIC_ORDER.size()
+	return Catalog.HIGH_SCORE_METRIC_ORDER.size()
 
 
 ## Text for one table cell. Pure: used by the table and by tests.
 func _table_cell_text(row_index: int, column: int) -> String:
-	var label := str(Catalog.BATTLE_METRIC_ORDER[row_index])
+	var label := str(Catalog.HIGH_SCORE_METRIC_ORDER[row_index])
 	var entry = _metrics.get(label)
 	var value := 0
 	var unit := ""
@@ -564,7 +568,7 @@ func _table_cell_text(row_index: int, column: int) -> String:
 		0:
 			return label.capitalize()
 		1:
-			return HighScores.format_value(value) if value > 0 else "\u2014"
+			return HighScores.format_metric_value(label, value) if value > 0 else "\u2014"
 		2:
 			return HighScores.format_unit(unit) if value > 0 else "\u2014"
 		3:
@@ -572,14 +576,21 @@ func _table_cell_text(row_index: int, column: int) -> String:
 	return ""
 
 
-## The species icon for a row's recorded unit, or null when there is none.
+## The icon for a row's recorded unit or trainer, or null when there is none.
+## Per-unit metrics use the species icon; trainer-attributed records use the
+## trainer portrait.
 func _unit_icon(row_index: int) -> Texture2D:
-	var label := str(Catalog.BATTLE_METRIC_ORDER[row_index])
+	var label := str(Catalog.HIGH_SCORE_METRIC_ORDER[row_index])
 	var entry = _metrics.get(label)
 	if not (entry is Dictionary):
 		return null
 	var unit := str(entry.get("unit", ""))
-	return SpeciesIcons.icon_for(unit) if not unit.is_empty() else null
+	if unit.is_empty():
+		return null
+	var meta = Catalog.HIGH_SCORE_METRICS.get(label, {})
+	if str(meta.get("icon", Catalog.ICON_UNIT)) == Catalog.ICON_TRAINER:
+		return TrainerIcons.icon_for(unit)
+	return SpeciesIcons.icon_for(unit)
 
 
 # --- Cheevos list -----------------------------------------------------------

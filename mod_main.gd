@@ -56,6 +56,8 @@ var _reaction_coordinator = ReactionCoordinator.new()
 
 # Persistent per-metric high scores and the shop's Brain Rot Memories panel.
 var _high_scores: Dictionary = {}
+# Cached battle/high_scores.gd script (static helpers; loaded once at setup).
+var _high_scores_script = null
 # Persistent earned-reaction achievements (core/achievement_store.gd).
 var _achievements: Dictionary = {}
 # Shop Memories button controller (hud/memories_button_controller.gd).
@@ -133,9 +135,9 @@ func _setup_core() -> void:
 	_state_capture = StateCapture.new()
 	_debug_logger = BattleLogger.new(_logger, _state_capture)
 
-	var HighScores = load(base_dir.path_join("battle/high_scores.gd"))
-	if HighScores != null:
-		_high_scores = HighScores.load_store()
+	_high_scores_script = load(base_dir.path_join("battle/high_scores.gd"))
+	if _high_scores_script != null:
+		_high_scores = _high_scores_script.load_store()
 
 	var AchievementStore = load(base_dir.path_join("core/achievement_store.gd"))
 	if AchievementStore != null:
@@ -218,6 +220,9 @@ func _inspect_current_phase() -> void:
 	var run = _get_run_data()
 	var run_snapshot: Dictionary = _snapshot_reader.read_run(run) if _snapshot_reader != null else {}
 	_check_run_transition(run, run_snapshot)
+	# Run-scoped high score: the highest simultaneous trinket count. Recorded on
+	# every poll (idempotent max) so a shop-only gain is never missed.
+	_record_run_high_scores(run_snapshot)
 
 	# Run-scoped reactions are evaluated only in the shop (the start of a day).
 	# The game promotes the completed run into RunManager.data before the visual
@@ -269,21 +274,35 @@ func _inspect_current_phase() -> void:
 ## Record persistent per-metric high scores from a completed battle snapshot.
 ## Saves only when a metric improves and logs each new record.
 func _record_high_scores(battle_snapshot: Dictionary) -> void:
-	if _high_scores.is_empty():
+	if _high_scores.is_empty() or _high_scores_script == null:
 		return
-	var HighScores = load(MOD_BASE_DIR.path_join("battle/high_scores.gd"))
-	if HighScores == null:
-		return
-	var improved: Dictionary = HighScores.record_battle(_high_scores, battle_snapshot)
+	var improved: Dictionary = _high_scores_script.record_battle(_high_scores, battle_snapshot)
 	if improved.is_empty():
 		return
-	HighScores.save_store(_high_scores)
+	_high_scores_script.save_store(_high_scores)
+	_log_high_scores(improved)
+
+
+## Record the run-scoped high score (most trinkets owned simultaneously) from a
+## run snapshot. Saves only when the metric improves and logs the new record.
+func _record_run_high_scores(run_snapshot: Dictionary) -> void:
+	if _high_scores.is_empty() or _high_scores_script == null:
+		return
+	var improved: Dictionary = _high_scores_script.record_run(_high_scores, run_snapshot)
+	if improved.is_empty():
+		return
+	_high_scores_script.save_store(_high_scores)
+	_log_high_scores(improved)
+
+
+## Log each improved high-score metric in the session log.
+func _log_high_scores(improved: Dictionary) -> void:
 	for metric in improved:
 		var row: Dictionary = improved[metric]
 		_logger.log_event("HIGH SCORE | %s %d by %s (was %d)" % [
 			str(metric),
 			int(row.get("value", 0)),
-			HighScores.format_unit(str(row.get("unit", ""))),
+			_high_scores_script.format_unit(str(row.get("unit", ""))),
 			int(row.get("previous", 0)),
 		])
 
