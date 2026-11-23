@@ -66,11 +66,17 @@ const FILTER_RIGHT_PAD := 10.0
 # plus their icon stay legible; the Metric column is wide enough for the longest
 # label ("Longest Battle") without clipping.
 const COLUMN_FRACTIONS := [0.24, 0.15, 0.35, 0.26]
-# Per-column alignment, shared by the header and body so each column reads as
-# one unit: text left, numbers right, the icon+name Unit column left.
+
 const COLUMN_ALIGNMENTS := [
 	HORIZONTAL_ALIGNMENT_LEFT,
-	HORIZONTAL_ALIGNMENT_RIGHT,
+	HORIZONTAL_ALIGNMENT_LEFT,
+	HORIZONTAL_ALIGNMENT_LEFT,
+	HORIZONTAL_ALIGNMENT_LEFT,
+]
+
+const HEADER_ALIGNMENTS := [
+	HORIZONTAL_ALIGNMENT_LEFT,
+	HORIZONTAL_ALIGNMENT_LEFT,
 	HORIZONTAL_ALIGNMENT_LEFT,
 	HORIZONTAL_ALIGNMENT_LEFT,
 ]
@@ -475,7 +481,7 @@ func _rebuild_table() -> void:
 	_clear_children(_table)
 	var header: Array = []
 	for column in range(HEADER_LABELS.size()):
-		var label := _table_label(HEADER_LABELS[column], FONT_SIZE, HEADER_COLOR, COLUMN_ALIGNMENTS[column])
+		var label := _table_label(HEADER_LABELS[column], FONT_SIZE, HEADER_COLOR, HEADER_ALIGNMENTS[column])
 		header.append(_table_cell(label, column))
 	_table.add_child(_table_row(header))
 	for row in range(_table_row_count()):
