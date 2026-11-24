@@ -324,7 +324,7 @@ func _default_number(placeholder: String) -> int:
 		"value":
 			var rule := Catalog.battle_rule(selected_id())
 			var value := int(rule.get("value", 0))
-			return value + 1 if bool(rule.get("strict", false)) else value
+			return value + 1 if str(rule.get("op", "eq")) == "gt" else value
 		"income":
 			match selected_id():
 				Catalog.SIX_NINE:

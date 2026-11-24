@@ -22,6 +22,7 @@ extends RefCounted
 ## pattern; the metric set comes from catalog/brain_rot_catalog.gd.
 
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
+const DateUtil = preload("../core/date_util.gd")
 
 const PATH := "user://brain_rot/high_scores.json"
 const VERSION := 1
@@ -34,8 +35,7 @@ static func empty_store() -> Dictionary:
 
 ## Current local date as MM/DD/YY (e.g. "11/18/26").
 static func current_date_string() -> String:
-	var date := Time.get_date_dict_from_system()
-	return "%02d/%02d/%02d" % [int(date["month"]), int(date["day"]), int(date["year"]) % 100]
+	return DateUtil.current_date_string()
 
 
 ## Parse a store from JSON text. Missing, corrupt, or wrongly typed data yields an

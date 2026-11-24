@@ -1,20 +1,22 @@
 extends RefCounted
 ## Reaction coordinator for Brain Rot.
 ##
-## Extracted from mod_main.gd. Owns the evaluator, player, sounds, and species
-## icons, plus the run/battle polling that drives them. mod_main only decides
-## when to poll; this decides what to do with the snapshots.
+## Extracted from mod_main.gd. Owns the evaluator, player, sounds, and the
+## species icon lookup, plus the run/battle polling that drives them. mod_main
+## only decides when to poll; this decides what to do with the snapshots.
 
-const MOD_BASE_DIR := "res://mods/BrainRot"
 const ModLogger = preload("../core/mod_logger.gd")
 const OccurrenceStore = preload("../core/occurrence_store.gd")
 const AchievementStore = preload("../core/achievement_store.gd")
+const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
+const ReactionSounds = preload("../audio/reaction_sounds.gd")
+const SpeciesIcons = preload("../catalog/species_icons.gd")
+const ReactionPlayer = preload("../reactions/reaction_player.gd")
 
 var _logger = ModLogger.new()
 var _evaluator = null
 var _player = null
 var _sounds = null
-var _species_icons = null
 var _last_shop_snapshot: Dictionary = {}
 var _run_reaction_gate_state := ""
 var _store = null
@@ -22,37 +24,23 @@ var _current_run_key := ""
 var _achievements: Dictionary = {}
 
 
-## Build the evaluator, sounds, species icons, and player. `host` owns the audio
-## players; `logger` is the session logger; `submit_notification` forwards toasts;
+## Build the evaluator, sounds, and player. `host` owns the audio players;
+## `logger` is the session logger; `submit_notification` forwards toasts;
 ## `volume` is the current Mod Volume provider.
 func setup(host: Node, logger, submit_notification: Callable, volume: Callable) -> void:
 	_logger = logger
 	_store = OccurrenceStore.new()
-
-	var ReactionEvaluator = load(MOD_BASE_DIR.path_join("reactions/reaction_evaluator.gd"))
 	_evaluator = ReactionEvaluator.new()
-
-	var ReactionSounds = load(MOD_BASE_DIR.path_join("audio/reaction_sounds.gd"))
-	if ReactionSounds != null:
-		_sounds = ReactionSounds.new(host, Callable(), volume)
-
-	# Species icon lookup for monster-involving reactions. Copied from Creature
-	# Comforts (core/species_icons.gd) so Brain Rot stays standalone.
-	var SpeciesIcons = load(MOD_BASE_DIR.path_join("catalog/species_icons.gd"))
-	if SpeciesIcons != null:
-		_species_icons = SpeciesIcons.new()
-
-	# Reactions log, submit to the shared toast queue, forward their id to the
-	# table-driven sound sink, and resolve a monster icon when one is involved.
-	var ReactionPlayer = load(MOD_BASE_DIR.path_join("reactions/reaction_player.gd"))
-	var icon_fn: Callable = _species_icons.icon_for if _species_icons != null else Callable()
-	_player = ReactionPlayer.new(logger.print_notice, submit_notification, _play_sound, icon_fn)
+	_sounds = ReactionSounds.new(host, Callable(), volume)
+	# SpeciesIcons.icon_for is static, so no instance is needed. Reactions log,
+	# submit to the shared toast queue, forward their id to the table-driven sound
+	# sink, and resolve a monster icon when one is involved.
+	_player = ReactionPlayer.new(logger.print_notice, submit_notification, _play_sound, SpeciesIcons.icon_for)
 
 
 ## Play the extra audio for a reaction, if the table has one.
 func _play_sound(id: String) -> void:
-	if _sounds != null:
-		_sounds.play_for(id)
+	_sounds.play_for(id)
 
 
 ## Poll the run snapshot for newly triggered reactions and play them.
@@ -70,16 +58,16 @@ func poll_reactions(run_snapshot: Dictionary, is_shop: bool) -> void:
 	if not is_shop:
 		_last_shop_snapshot = {}
 		return
-	var run_matches: Array = _evaluator.poll(run_snapshot)
-	var sold_matches: Array = _evaluator.poll_sold(_last_shop_snapshot, run_snapshot)
-	var buff_matches: Array = _evaluator.poll_buff(_last_shop_snapshot, run_snapshot)
-	_player.play_all(run_matches)
-	_player.play_all(sold_matches)
-	_player.play_all(buff_matches)
+	var matches: Array = []
+	matches.append_array(_evaluator.poll(run_snapshot))
+	matches.append_array(_evaluator.poll_sold(_last_shop_snapshot, run_snapshot))
+	matches.append_array(_evaluator.poll_buff(_last_shop_snapshot, run_snapshot))
 	_last_shop_snapshot = run_snapshot
-	if not run_matches.is_empty() or not sold_matches.is_empty() or not buff_matches.is_empty():
-		_save_occurrences()
-		_record_achievements(run_matches + sold_matches + buff_matches, _current_run_key)
+	if matches.is_empty():
+		return
+	_player.play_all(matches)
+	_save_occurrences()
+	_record_achievements(matches, _current_run_key)
 
 
 ## Log the run-reaction phase gate only when it changes, so the first real session

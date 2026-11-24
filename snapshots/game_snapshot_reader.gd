@@ -27,9 +27,8 @@ extends RefCounted
 ##     }
 ##
 ## monster: {"name_key": String, "level": int, "shiny": bool} with each key present
-## only when the live monster exposes it.
-## live monster exposes it. A null/invalid monster becomes {} so list positions are
-## preserved (Big Dog resolves species by slot index).
+## only when the live monster exposes it. A null/invalid monster becomes {} so list
+## positions are preserved (Big Dog resolves species by slot index).
 ## unit: {"team_id": int, "slot_index": int, "shield_granted": float,
 ##        "damage_dealt": float, "healing_done": float,
 ##        "burn_inflicted": int, "poison_inflicted": int, "shock_inflicted": int,
@@ -245,27 +244,27 @@ func _read_collection_size(value):
 	return null
 
 
-## Integer value of a live object's property, or null when missing/null/non-numeric.
-## Accepts int and float (floats are truncated) so a numeric field never raises.
-func _read_int(obj, property: String):
-	if not _has_prop.call(obj, property):
-		return null
-	var value = obj.get(property)
-	if typeof(value) == TYPE_INT:
-		return int(value)
-	if typeof(value) == TYPE_FLOAT:
-		return int(value)
-	return null
-
-
-## Float value of a live object's property, or null when missing/null/non-numeric.
-func _read_float(obj, property: String):
+## Raw numeric value of a live object's property, or null when missing/non-numeric.
+func _read_number(obj, property: String):
 	if not _has_prop.call(obj, property):
 		return null
 	var value = obj.get(property)
 	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
-		return float(value)
+		return value
 	return null
+
+
+## Integer value of a live object's property, or null when missing/non-numeric.
+## Floats are truncated so a numeric field never raises.
+func _read_int(obj, property: String):
+	var value = _read_number(obj, property)
+	return int(value) if value != null else null
+
+
+## Float value of a live object's property, or null when missing/non-numeric.
+func _read_float(obj, property: String):
+	var value = _read_number(obj, property)
+	return float(value) if value != null else null
 
 
 func _is_live(obj) -> bool:

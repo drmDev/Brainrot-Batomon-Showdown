@@ -42,12 +42,6 @@ const Catalog = preload("../catalog/brain_rot_catalog.gd")
 const PLAYER_TEAM_ID := 0  # battle_units team_id used for the player's side
 
 
-## Every registered reaction scope. Dev tooling and schema tests iterate this so a
-## new reaction cannot be forgotten.
-static func registered_rows() -> Array:
-	return Catalog.registered_rows()
-
-
 # Run-scoped occurrence count per reaction id. Presence means "already triggered".
 var _occurrences: Dictionary = {}
 # Battle-scoped: reaction ids that already fired for the current battle.
@@ -64,16 +58,7 @@ func poll(run_snapshot: Dictionary) -> Array:
 		var id := str(definition.get("id", ""))
 		if id.is_empty() or _occurrences.has(id):
 			continue
-		var match: Dictionary = Catalog.run_match(id, run_snapshot)
-		if match.is_empty():
-			continue
-		_occurrences[id] = 1
-		triggered.append({
-			"id": id,
-			"case": str(match.get("case", "")),
-			"params": match.get("params", {}),
-			"species_key": _species_key_from_definition(definition),
-		})
+		triggered.append_array(_triggered(id, Catalog.run_match(id, run_snapshot)))
 	return triggered
 
 
@@ -122,43 +107,31 @@ func poll_battle(battle_snapshot: Dictionary) -> Array:
 ## Poll a shop sale diff: Sarudo present in `previous_run` and gone/reduced in
 ## `current_run`. Fires once per run (run-scoped).
 func poll_sold(previous_run: Dictionary, current_run: Dictionary) -> Array:
-	var triggered: Array = []
-	if previous_run.is_empty() or current_run.is_empty():
-		return triggered
-	if _occurrences.has(Catalog.HARAMBE):
-		return triggered
-	var match: Dictionary = Catalog.sold_match(previous_run, current_run)
-	if match.is_empty():
-		return triggered
-	_occurrences[Catalog.HARAMBE] = 1
-	triggered.append({
-		"id": Catalog.HARAMBE,
-		"case": str(match.get("case", "")),
-		"params": match.get("params", {}),
-		"species_key": "monster.name.sarudo",
-	})
-	return triggered
+	if previous_run.is_empty() or current_run.is_empty() or _occurrences.has(Catalog.HARAMBE):
+		return []
+	return _triggered(Catalog.HARAMBE, Catalog.sold_match(previous_run, current_run))
 
 
 ## Poll a shop buff diff: a Tengusto gained a Poison or Shock permanent buff
 ## between `previous_run` and `current_run`. Fires once per run (run-scoped).
 func poll_buff(previous_run: Dictionary, current_run: Dictionary) -> Array:
-	var triggered: Array = []
-	if previous_run.is_empty() or current_run.is_empty():
-		return triggered
-	if _occurrences.has(Catalog.TETSUO):
-		return triggered
-	var match: Dictionary = Catalog.buff_gain_match(previous_run, current_run)
+	if previous_run.is_empty() or current_run.is_empty() or _occurrences.has(Catalog.TETSUO):
+		return []
+	return _triggered(Catalog.TETSUO, Catalog.buff_gain_match(previous_run, current_run))
+
+
+## Mark `id` as fired and return its match row, or [] when the match is empty.
+## The species key comes from the catalog entry so presentation can resolve an icon.
+func _triggered(id: String, match: Dictionary) -> Array:
 	if match.is_empty():
-		return triggered
-	_occurrences[Catalog.TETSUO] = 1
-	triggered.append({
-		"id": Catalog.TETSUO,
+		return []
+	_occurrences[id] = 1
+	return [{
+		"id": id,
 		"case": str(match.get("case", "")),
 		"params": match.get("params", {}),
-		"species_key": "monster.name.tengusto",
-	})
-	return triggered
+		"species_key": Catalog.species_for(id),
+	}]
 
 
 ## Clear all tracking. Call at a verified run transition.
@@ -182,18 +155,13 @@ func reset_battle() -> void:
 	_battle_fired.clear()
 
 
-## How many times this run-scoped reaction has triggered in the current run (0 or 1).
-func occurrence_count(id: String) -> int:
-	return int(_occurrences.get(id, 0))
-
-
 ## Lowest player-side slot with a metric satisfying `rule`, plus the first
 ## matching metric label in BATTLE_METRIC_ORDER and the actual total. Returns {}
 ## when nothing matches. When `rule` carries a `species` key, only units whose
 ## team slot resolves to that species name_key can match.
 func _find_battle_match(units: Array, team: Array, rule: Dictionary) -> Dictionary:
 	var expected := int(rule.get("value", 0))
-	var strict := bool(rule.get("strict", false))
+	var op := str(rule.get("op", "eq"))
 	var metric_labels = rule.get("metrics")
 	if not metric_labels is Array:
 		metric_labels = Catalog.BATTLE_METRIC_ORDER
@@ -235,7 +203,7 @@ func _find_battle_match(units: Array, team: Array, rule: Dictionary) -> Dictiona
 			if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
 				continue
 			var actual := int(value)
-			var matched := actual > expected if strict else actual == expected
+			var matched := actual > expected if op == "gt" else actual == expected
 			if matched:
 				best_slot = slot
 				best_label = label
@@ -257,7 +225,3 @@ func _species_key_at(team: Array, slot: int) -> String:
 	return str(entry.get("name_key", ""))
 
 
-## Static species key authored on a reaction definition, or "" when absent. Run
-## reactions tied to a specific monster (apes/oh_yeah/herd) carry this metadata.
-func _species_key_from_definition(definition: Dictionary) -> String:
-	return str(definition.get("species", ""))

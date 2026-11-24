@@ -19,7 +19,7 @@ extends RefCounted
 ##
 ## Reaction checks:
 ##   run_match(id, snapshot)       -> {"case": String, "params": Dictionary}, or {}
-##   battle_rule(id)               -> {"value": int, "strict": bool, "metrics": [label, ...], "species"?: String}
+##   battle_rule(id)               -> {"value": int, "op": "eq"|"gt", "metrics": [label, ...], "species"?: String}
 
 const KIND_REACTION := "reaction"
 
@@ -202,6 +202,39 @@ const ENTRIES := [
 ]
 
 
+## Run-scoped "owns a monster" rules, keyed by reaction id. A row matches when the
+## run's team or bench contains a monster satisfying every present field:
+##   trainer: required trainer_id (absent = any trainer)
+##   species: required name_key (absent = any species)
+##   level:   required level (-1 = any level)
+##   shiny:   true = must be shiny (absent = no requirement)
+##   case:    match case name
+const OWN_RULES := {
+	APES_TOGETHER: {"trainer": "twins", "species": "monster.name.sunsage", "level": -1, "case": "owned"},
+	OH_YEAH: {"species": "monster.name.beetdown", "level": 3, "case": "owned"},
+	HERD_U_LIEK_MUDKIPZ: {"species": "monster.name.dewlotl", "level": 3, "case": "owned"},
+	TROGDOR: {"species": "monster.name.furnadon", "level": 3, "case": "owned"},
+	NOT_THE_BEES: {"species": "monster.name.bumblebolt", "level": 3, "case": "owned"},
+	DOUBLE_RAINBOW: {"trainer": "twins", "level": 3, "shiny": true, "case": "owned"},
+}
+
+## Run-scoped lives/day/wins/income rules, keyed by reaction id. `lives` must match,
+## then day and wins are checked against `target` in priority order, with `income`
+## as the fallback.
+const LIVES_RULES := {
+	SIX_SEVEN: {"lives": 6, "target": 7, "income": 67},
+	SIX_NINE: {"lives": 6, "target": 9, "income": 69},
+}
+
+## Run-scoped income rules, keyed by reaction id. `op` is "eq" (exactly) or "gt"
+## (greater than).
+const INCOME_RULES := {
+	FOUR_TWENTY: {"value": 420, "op": "eq"},
+	SIX_SIX_SIX: {"value": 666, "op": "eq"},
+	OVER_9000: {"value": 9000, "op": "gt"},
+}
+
+
 ## Every reaction entry, in stable order.
 static func reactions() -> Array:
 	return ENTRIES
@@ -221,6 +254,11 @@ static func title_for(id: String) -> String:
 	if found.is_empty():
 		return id
 	return str(found.get("title", id))
+
+
+## Static species name_key authored on a reaction entry, or "" when absent.
+static func species_for(id: String) -> String:
+	return str(entry(id).get("species", ""))
 
 
 ## Badge text for an id: the entry's explicit "icon" when present, otherwise a
@@ -283,79 +321,53 @@ static func sounds() -> Dictionary:
 	return out
 
 
-## Every registered reaction scope, for dev tooling and schema tests.
-static func registered_rows() -> Array:
-	var rows: Array = []
-	for entry in reactions():
-		var id := str(entry.get("id", ""))
-		for scope in entry.get("scopes", []):
-			rows.append({"scope": str(scope), "row": {"id": id}})
-	return rows
-
-
 # --- Reaction checks -------------------------------------------------------
 
 ## Match for a run-scoped reaction, or {}. When several conditions match at once,
 ## exactly one case is chosen by fixed priority (lives_day_wins > lives_day >
 ## lives_wins > income), so one toast never mixes two conditions.
 static func run_match(id: String, snapshot: Dictionary) -> Dictionary:
-	match id:
-		SIX_SEVEN:
-			return _six_seven_match(snapshot)
-		SIX_NINE:
-			return _six_nine_match(snapshot)
-		FOUR_TWENTY:
-			return _income_match(snapshot, 420)
-		SIX_SIX_SIX:
-			return _income_match(snapshot, 666)
-		OVER_9000:
-			return _income_gt_match(snapshot, 9000)
-		APES_TOGETHER:
-			return _apes_together_match(snapshot)
-		OH_YEAH:
-			return _beetdown_match(snapshot)
-		HERD_U_LIEK_MUDKIPZ:
-			return _dewlotl_match(snapshot)
-		DOUBLE_RAINBOW:
-			return _double_rainbow_match(snapshot)
-		TROGDOR:
-			return _furnadon_match(snapshot)
-		NOT_THE_BEES:
-			return _bumblebolt_match(snapshot)
+	if snapshot.is_empty():
+		return {}
+	if OWN_RULES.has(id):
+		return _own_match(snapshot, OWN_RULES[id])
+	if LIVES_RULES.has(id):
+		var lives_row: Dictionary = LIVES_RULES[id]
+		return _lives_day_wins_income_match(
+			snapshot,
+			int(lives_row["lives"]),
+			int(lives_row["target"]),
+			int(lives_row["income"]),
+		)
+	if INCOME_RULES.has(id):
+		var income_row: Dictionary = INCOME_RULES[id]
+		return _income_match(snapshot, int(income_row["value"]), str(income_row["op"]))
 	return {}
 
 
 ## Battle comparison for a battle-scoped reaction, or {} when it has none.
-## `strict` means "greater than"; otherwise the comparison is equality. An optional
-## `species` key restricts the match to units whose team slot resolves to that
-## species name_key (Big Dog is Cinnabark-only).
+## `op` is "eq" (exactly) or "gt" (greater than). An optional `species` key
+## restricts the match to units whose team slot resolves to that species name_key
+## (Big Dog is Cinnabark-only).
 static func battle_rule(id: String) -> Dictionary:
 	match id:
 		SIX_SEVEN:
-			return {"value": 67, "strict": false, "metrics": BATTLE_METRIC_ORDER}
+			return {"value": 67, "op": "eq", "metrics": BATTLE_METRIC_ORDER}
 		SIX_NINE:
-			return {"value": 69, "strict": false, "metrics": BATTLE_METRIC_ORDER}
+			return {"value": 69, "op": "eq", "metrics": BATTLE_METRIC_ORDER}
 		FOUR_TWENTY:
-			return {"value": 420, "strict": false, "metrics": BATTLE_METRIC_ORDER}
+			return {"value": 420, "op": "eq", "metrics": BATTLE_METRIC_ORDER}
 		SIX_SIX_SIX:
-			return {"value": 666, "strict": false, "metrics": BATTLE_METRIC_ORDER}
+			return {"value": 666, "op": "eq", "metrics": BATTLE_METRIC_ORDER}
 		OVER_9000:
-			return {"value": 9000, "strict": true, "metrics": ["heal", "burn", "poison", "shock"]}
+			return {"value": 9000, "op": "gt", "metrics": ["heal", "burn", "poison", "shock"]}
 		BIG_DOG:
-			return {"value": 1000000, "strict": true, "metrics": ["shield"], "species": "monster.name.cinnabark"}
+			return {"value": 1000000, "op": "gt", "metrics": ["shield"], "species": "monster.name.cinnabark"}
 	return {}
 
 
-static func _six_seven_match(snapshot: Dictionary) -> Dictionary:
-	return _lives_day_wins_income_match(snapshot, 6, 7, 67)
-
-
-static func _six_nine_match(snapshot: Dictionary) -> Dictionary:
-	return _lives_day_wins_income_match(snapshot, 6, 9, 69)
-
-
-## Shared priority for six_seven / six_nine. Lives must be lives_expected; day and
-## wins match the same target; income is the fallback.
+## Shared priority for the lives/day/wins/income rules. Lives must match; day and
+## wins are checked against the same target; income is the fallback.
 static func _lives_day_wins_income_match(snapshot: Dictionary, lives_expected: int, target: int, income_expected: int) -> Dictionary:
 	var lives = _int(snapshot, "lives")
 	var day = _int(snapshot, "current_round")
@@ -377,65 +389,54 @@ static func _lives_day_wins_income_match(snapshot: Dictionary, lives_expected: i
 	return {}
 
 
-static func _income_match(snapshot: Dictionary, expected: int) -> Dictionary:
+## Income rule: "eq" (exactly) or "gt" (greater than).
+static func _income_match(snapshot: Dictionary, expected: int, op: String = "eq") -> Dictionary:
 	var income = _int(snapshot, "income")
-	if income != null and int(income) == expected:
+	if income == null:
+		return {}
+	var actual := int(income)
+	if op == "gt":
+		if actual > expected:
+			return {"case": "income", "params": {"income": actual}}
+		return {}
+	if actual == expected:
 		return {"case": "income", "params": {"income": expected}}
 	return {}
 
 
-static func _income_gt_match(snapshot: Dictionary, threshold: int) -> Dictionary:
-	var income = _int(snapshot, "income")
-	if income != null and int(income) > threshold:
-		return {"case": "income", "params": {"income": int(income)}}
+## Match a run snapshot against an OWN_RULES row. Returns {case, params} or {}.
+static func _own_match(snapshot: Dictionary, rule: Dictionary) -> Dictionary:
+	var trainer := str(rule.get("trainer", ""))
+	if not trainer.is_empty() and str(snapshot.get("trainer_id", "")) != trainer:
+		return {}
+	var species := str(rule.get("species", ""))
+	var level := int(rule.get("level", -1))
+	var shiny := bool(rule.get("shiny", false))
+	for monster in _monsters(snapshot):
+		if not species.is_empty() and str(monster.get("name_key", "")) != species:
+			continue
+		if level >= 0:
+			var monster_level = monster.get("level")
+			if typeof(monster_level) != TYPE_INT or int(monster_level) != level:
+				continue
+		if shiny and not bool(monster.get("shiny", false)):
+			continue
+		return {"case": str(rule.get("case", "owned")), "params": {}}
 	return {}
 
 
-static func _apes_together_match(snapshot: Dictionary) -> Dictionary:
-	var trainer = snapshot.get("trainer_id")
-	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
-		return {}
-	return _has_species(snapshot, "monster.name.sunsage", -1)
-
-
-## OH_YEAH: owns a level-3 Beetdown (any trainer).
-static func _beetdown_match(snapshot: Dictionary) -> Dictionary:
-	return _has_species(snapshot, "monster.name.beetdown", 3)
-
-
-## HERD_U_LIEK_MUDKIPZ: owns a level-3 Dewlotl (any trainer).
-static func _dewlotl_match(snapshot: Dictionary) -> Dictionary:
-	return _has_species(snapshot, "monster.name.dewlotl", 3)
-
-
-## TROGDOR: owns a level-3 Furnadon (any trainer).
-static func _furnadon_match(snapshot: Dictionary) -> Dictionary:
-	return _has_species(snapshot, "monster.name.furnadon", 3)
-
-
-## NOT_THE_BEES: owns a level-3 Bumblebolt (any trainer).
-static func _bumblebolt_match(snapshot: Dictionary) -> Dictionary:
-	return _has_species(snapshot, "monster.name.bumblebolt", 3)
-
-
-## DOUBLE_RAINBOW: Twins owns any level-3 shiny monster.
-static func _double_rainbow_match(snapshot: Dictionary) -> Dictionary:
-	var trainer = snapshot.get("trainer_id")
-	if typeof(trainer) != TYPE_STRING or str(trainer) != "twins":
-		return {}
+## Every monster entry in the run's team then bench, in order. Non-dictionary
+## entries are skipped; the reader emits {} for a null monster, so this is safe.
+static func _monsters(snapshot: Dictionary) -> Array:
+	var out: Array = []
 	for list_name in ["team", "bench"]:
 		var list = snapshot.get(list_name)
 		if not list is Array:
 			continue
 		for monster in list:
-			if not monster is Dictionary:
-				continue
-			var level = monster.get("level")
-			if typeof(level) != TYPE_INT or int(level) != 3:
-				continue
-			if bool(monster.get("shiny", false)):
-				return {"case": "owned", "params": {}}
-	return {}
+			if monster is Dictionary:
+				out.append(monster)
+	return out
 
 
 ## HARAMBE: a Sarudo was sold between two shop snapshots.
@@ -467,16 +468,10 @@ static func buff_gain_match(previous: Dictionary, current: Dictionary) -> Dictio
 ## Summed Poison + Shock permanent buffs across owned Tengusto (team + bench).
 static func _tengusto_poison_shock_total(snapshot: Dictionary) -> float:
 	var total := 0.0
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
+	for monster in _monsters(snapshot):
+		if str(monster.get("name_key", "")) != "monster.name.tengusto":
 			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != "monster.name.tengusto":
-				continue
-			total += _monster_poison_shock(monster)
+		total += _monster_poison_shock(monster)
 	return total
 
 
@@ -493,51 +488,22 @@ static func _monster_poison_shock(monster: Dictionary) -> float:
 ## Number of team/bench monsters with `species_key`.
 static func _count_species(snapshot: Dictionary, species_key: String) -> int:
 	var count := 0
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
-			continue
-		for monster in list:
-			if monster is Dictionary and str(monster.get("name_key", "")) == species_key:
-				count += 1
+	for monster in _monsters(snapshot):
+		if str(monster.get("name_key", "")) == species_key:
+			count += 1
 	return count
 
 
 ## Highest level among team/bench monsters with `species_key` (0 when none).
 static func _max_species_level(snapshot: Dictionary, species_key: String) -> int:
 	var max_level := 0
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
+	for monster in _monsters(snapshot):
+		if str(monster.get("name_key", "")) != species_key:
 			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != species_key:
-				continue
-			var level = monster.get("level")
-			if typeof(level) == TYPE_INT and int(level) > max_level:
-				max_level = int(level)
+		var level = monster.get("level")
+		if typeof(level) == TYPE_INT and int(level) > max_level:
+			max_level = int(level)
 	return max_level
-
-
-## Team/bench contains `species_key` at `level_required` (or any level when -1).
-static func _has_species(snapshot: Dictionary, species_key: String, level_required: int = -1) -> Dictionary:
-	for list_name in ["team", "bench"]:
-		var list = snapshot.get(list_name)
-		if not list is Array:
-			continue
-		for monster in list:
-			if not monster is Dictionary:
-				continue
-			if str(monster.get("name_key", "")) != species_key:
-				continue
-			if level_required >= 0:
-				var level = monster.get("level")
-				if typeof(level) != TYPE_INT or int(level) != level_required:
-					continue
-			return {"case": "owned", "params": {}}
-	return {}
 
 
 ## Integer value of a snapshot key, or null when missing/non-int.

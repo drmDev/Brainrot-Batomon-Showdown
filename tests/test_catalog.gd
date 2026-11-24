@@ -84,16 +84,6 @@ func test_every_template_placeholder_is_known() -> void:
 				)
 
 
-func test_registered_rows_cover_every_scope() -> void:
-	var seen := {}
-	for row in Catalog.registered_rows():
-		seen["%s|%s" % [str(row["row"].get("id", "")), str(row["scope"])]] = true
-	for entry in Catalog.reactions():
-		var id := str(entry.get("id", ""))
-		for scope in entry.get("scopes", []):
-			assert_true(seen.has("%s|%s" % [id, str(scope)]), "%s missing %s" % [id, str(scope)])
-
-
 func test_every_entry_has_short_icon_text() -> void:
 	for entry in Catalog.ENTRIES:
 		var id := str(entry.get("id", ""))

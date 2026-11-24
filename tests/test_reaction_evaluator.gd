@@ -49,6 +49,11 @@ func _new_evaluator():
 	return ReactionEvaluator.new()
 
 
+## Run-scoped occurrence count for an id (0 or 1).
+func _count(evaluator, id: String) -> int:
+	return int(evaluator.occurrences().get(id, 0))
+
+
 ## Run snapshot with the original lives/wins pair (Day absent).
 func _snap(lives, wins) -> Dictionary:
 	return {"kind": "run", "lives": lives, "current_wins": wins}
@@ -123,7 +128,7 @@ func test_lives6_wins7_triggers_once() -> void:
 	if earned.size() == 1:
 		assert_eq(str(earned[0].get("id", "")), SIX_SEVEN)
 		_assert_run_case(earned[0], "lives_wins")
-	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 1)
+	assert_eq(_count(evaluator, SIX_SEVEN), 1)
 
 
 # --- 1a. shop layout: Lives 6 + Day/Wins 7 or 9 ---
@@ -285,7 +290,7 @@ func test_repeated_matching_polls_do_not_retrigger() -> void:
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 	assert_empty(evaluator.poll(_snap(6, 7)))
 	assert_empty(evaluator.poll(_snap(6, 7)))
-	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 1)
+	assert_eq(_count(evaluator, SIX_SEVEN), 1)
 
 
 # --- 6. matching -> nonmatching -> matching stays suppressed ---
@@ -295,7 +300,7 @@ func test_returning_to_condition_does_not_retrigger() -> void:
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 	assert_empty(evaluator.poll(_snap(9, 7)))
 	assert_empty(evaluator.poll(_snap(6, 7)))
-	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 1)
+	assert_eq(_count(evaluator, SIX_SEVEN), 1)
 
 
 func test_run_unavailable_does_not_rearm() -> void:
@@ -312,7 +317,7 @@ func test_reset_run_permits_another_trigger() -> void:
 	var evaluator = _new_evaluator()
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 	evaluator.reset_run()
-	assert_eq(evaluator.occurrence_count(SIX_SEVEN), 0)
+	assert_eq(_count(evaluator, SIX_SEVEN), 0)
 	assert_eq(evaluator.poll(_snap(6, 7)).size(), 1)
 
 
@@ -545,9 +550,9 @@ func test_battle_reactions_do_not_trigger_on_run_snapshot() -> void:
 		assert_false(ids.has(FOUR_TWENTY))
 		assert_false(ids.has(SIX_SIX_SIX))
 		assert_false(ids.has(OVER_9000))
-	assert_eq(evaluator.occurrence_count(FOUR_TWENTY), 0)
-	assert_eq(evaluator.occurrence_count(SIX_SIX_SIX), 0)
-	assert_eq(evaluator.occurrence_count(OVER_9000), 0)
+	assert_eq(_count(evaluator, FOUR_TWENTY), 0)
+	assert_eq(_count(evaluator, SIX_SIX_SIX), 0)
+	assert_eq(_count(evaluator, OVER_9000), 0)
 
 
 # --- 8c. over_9000: heal/burn/poison/shock strictly above 9000 ---

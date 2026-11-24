@@ -27,12 +27,21 @@ const POLL_INTERVAL_MS := 500
 # Shared helpers and the session logger (extracted from mod_main).
 const NodeUtils = preload("catalog/node_utils.gd")
 const ModLogger = preload("core/mod_logger.gd")
+const ModConfig = preload("core/mod_config.gd")
 const ModVolumeSettings = preload("hud/mod_volume_settings.gd")
 const MemoriesButtonController = preload("hud/memories_button_controller.gd")
 const RunTracker = preload("core/run_tracker.gd")
 const BattleLogger = preload("debug/battle_logger.gd")
 const ReactionCoordinator = preload("reactions/reaction_coordinator.gd")
 const ToastPreviewController = preload("dev/toast_preview_controller.gd")
+const GameSnapshotReader = preload("snapshots/game_snapshot_reader.gd")
+const BattleCompletionDetector = preload("battle/battle_completion_detector.gd")
+const StateCapture = preload("debug/state_capture.gd")
+const HighScores = preload("battle/high_scores.gd")
+const AchievementStore = preload("core/achievement_store.gd")
+const NotificationManager = preload("notifications/notification_manager.gd")
+const NotificationHost = preload("notifications/notification_host.gd")
+const MemoriesPanel = preload("hud/memories_panel.gd")
 
 # Toasts are always on; there is no settings gate.
 
@@ -56,8 +65,6 @@ var _reaction_coordinator = ReactionCoordinator.new()
 
 # Persistent per-metric high scores and the shop's Brain Rot Memories panel.
 var _high_scores: Dictionary = {}
-# Cached battle/high_scores.gd script (static helpers; loaded once at setup).
-var _high_scores_script = null
 # Persistent earned-reaction achievements (core/achievement_store.gd).
 var _achievements: Dictionary = {}
 # Shop Memories button controller (hud/memories_button_controller.gd).
@@ -112,9 +119,6 @@ func _initialize_mod() -> void:
 ## when running standalone). Mod Volume is not declared in mod.json, so it is
 ## persisted in the mod's own file rather than the loader's store.
 func _setup_config() -> void:
-	var ModConfig = load(MOD_BASE_DIR.path_join("core/mod_config.gd"))
-	if ModConfig == null:
-		return
 	_config = ModConfig.new()
 	_config.setup(get_node_or_null("/root/ModLoader"))
 	_config.use_store(ModConfig.STORE_PATH)
@@ -123,25 +127,12 @@ func _setup_config() -> void:
 
 func _setup_core() -> void:
 	"""Initialize snapshot reading, battle-completion detection, and the toast host."""
-	var base_dir := MOD_BASE_DIR
-
-	var GameSnapshotReader = load(base_dir.path_join("snapshots/game_snapshot_reader.gd"))
 	_snapshot_reader = GameSnapshotReader.new(NodeUtils.has_property)
-
-	var BattleCompletionDetector = load(base_dir.path_join("battle/battle_completion_detector.gd"))
 	_battle_completion = BattleCompletionDetector.new()
-
-	var StateCapture = load(base_dir.path_join("debug/state_capture.gd"))
 	_state_capture = StateCapture.new()
 	_debug_logger = BattleLogger.new(_logger, _state_capture)
-
-	_high_scores_script = load(base_dir.path_join("battle/high_scores.gd"))
-	if _high_scores_script != null:
-		_high_scores = _high_scores_script.load_store()
-
-	var AchievementStore = load(base_dir.path_join("core/achievement_store.gd"))
-	if AchievementStore != null:
-		_achievements = AchievementStore.load_store()
+	_high_scores = HighScores.load_store()
+	_achievements = AchievementStore.load_store()
 
 	# Dedicated layer so toasts can appear over the battle results screen.
 	_toast_layer = CanvasLayer.new()
@@ -150,21 +141,17 @@ func _setup_core() -> void:
 	add_child(_toast_layer)
 
 	# Shared toast queue for reactions.
-	var NotificationManager = load(base_dir.path_join("notifications/notification_manager.gd"))
-	var NotificationHost = load(base_dir.path_join("notifications/notification_host.gd"))
 	_notification_host = NotificationHost.new(NotificationManager.new(), _toast_layer)
 	_notification_host.name = "NotificationHost"
 	_toast_layer.add_child(_notification_host)
 
 	# Shop button that opens the Brain Rot Memories panel. The achievements store
 	# is handed over by reference so earned state stays in sync as reactions fire.
-	var MemoriesPanel = load(base_dir.path_join("hud/memories_panel.gd"))
-	if MemoriesPanel != null:
-		var memories_panel = MemoriesPanel.new()
-		memories_panel.name = "MemoriesPanel"
-		memories_panel.set_achievements(_achievements)
-		_toast_layer.add_child(memories_panel)
-		_memories_button = MemoriesButtonController.new(memories_panel, _logger)
+	var memories_panel = MemoriesPanel.new()
+	memories_panel.name = "MemoriesPanel"
+	memories_panel.set_achievements(_achievements)
+	_toast_layer.add_child(memories_panel)
+	_memories_button = MemoriesButtonController.new(memories_panel, _logger)
 
 
 func _setup_reactions() -> void:
@@ -219,47 +206,11 @@ func _inspect_current_phase() -> void:
 
 	var run = _get_run_data()
 	var run_snapshot: Dictionary = _snapshot_reader.read_run(run) if _snapshot_reader != null else {}
-	_check_run_transition(run, run_snapshot)
-	# Run-scoped high score: the highest simultaneous trinket count. Recorded on
-	# every poll (idempotent max) so a shop-only gain is never missed.
-	_record_run_high_scores(run_snapshot)
-
-	# Run-scoped reactions are evaluated only in the shop (the start of a day).
-	# The game promotes the completed run into RunManager.data before the visual
-	# battle ends, so lives/wins/income there already reflect the post-battle
-	# result. Polling mid-battle would fire 6 7 / 6 9 before the player sees the
-	# next day. Battle-scoped reactions still fire at battle_over.
-	_reaction_coordinator.poll_reactions(run_snapshot, is_shop)
-	_debug_logger.log_run_progress(run_snapshot)
+	_poll_run(run, run_snapshot, is_shop)
 
 	var battle_snapshot: Dictionary = {}
 	if is_battle:
-		# A new battle starts fresh battle-scoped reaction tracking.
-		if not _was_battle:
-			_reaction_coordinator.reset_battle()
-			_debug_logger.log_battle_probe(state)
-
-		# Battle-scoped reactions are evaluated once the battle is over, against the
-		# final unit totals. The detector owns that timing; the completion is consumed
-		# only after a usable snapshot exists, so a partial read is retried next poll.
-		if _battle_completion != null and _battle_completion.is_pending(state):
-			# During battle the player's run is the replay copy the game hands the
-			# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
-			# RunManager.data may already be the promoted/completed run.
-			var player_run = _get_battle_player_run(state, run)
-			battle_snapshot = _snapshot_reader.read_battle(state, player_run)
-			var usable: bool = _snapshot_reader.is_battle_snapshot_usable(battle_snapshot)
-			_logger.log_event("BATTLE COMPLETE | usable=%s units=%s team=%s trainer=%s" % [
-				str(usable),
-				str(battle_snapshot.get("battle_units").size()) if battle_snapshot.get("battle_units") is Array else "absent",
-				str(battle_snapshot.get("team").size()) if battle_snapshot.get("team") is Array else "absent",
-				str(battle_snapshot.get("trainer_id", "absent")),
-			])
-			if usable:
-				_battle_completion.consume()
-				_debug_logger.log_battle_units(battle_snapshot)
-				_record_high_scores(battle_snapshot)
-				_reaction_coordinator.poll_battle_reactions(battle_snapshot)
+		battle_snapshot = _poll_battle(state, run)
 	elif _was_battle:
 		# Reset battle-scoped tracking only when actually leaving the battle phase.
 		if _battle_completion != null:
@@ -271,27 +222,67 @@ func _inspect_current_phase() -> void:
 	_maybe_capture(battle_snapshot if is_battle else run_snapshot)
 
 
-## Record persistent per-metric high scores from a completed battle snapshot.
-## Saves only when a metric improves and logs each new record.
-func _record_high_scores(battle_snapshot: Dictionary) -> void:
-	if _high_scores.is_empty() or _high_scores_script == null:
-		return
-	var improved: Dictionary = _high_scores_script.record_battle(_high_scores, battle_snapshot)
-	if improved.is_empty():
-		return
-	_high_scores_script.save_store(_high_scores)
-	_log_high_scores(improved)
+## Run-scoped work: transition detection, the trinket high score, run reactions,
+## and run-progress logging.
+func _poll_run(run, run_snapshot: Dictionary, is_shop: bool) -> void:
+	_check_run_transition(run, run_snapshot)
+	# Run-scoped high score: the highest simultaneous trinket count. Recorded on
+	# every poll (idempotent max) so a shop-only gain is never missed.
+	_record_high_scores(run_snapshot, HighScores.record_run)
+	# Run-scoped reactions are evaluated only in the shop (the start of a day).
+	# The game promotes the completed run into RunManager.data before the visual
+	# battle ends, so lives/wins/income there already reflect the post-battle
+	# result. Polling mid-battle would fire 6 7 / 6 9 before the player sees the
+	# next day. Battle-scoped reactions still fire at battle_over.
+	_reaction_coordinator.poll_reactions(run_snapshot, is_shop)
+	_debug_logger.log_run_progress(run_snapshot)
 
 
-## Record the run-scoped high score (most trinkets owned simultaneously) from a
-## run snapshot. Saves only when the metric improves and logs the new record.
-func _record_run_high_scores(run_snapshot: Dictionary) -> void:
-	if _high_scores.is_empty() or _high_scores_script == null:
+## Battle-scoped work: reset tracking on a new battle, then evaluate once the
+## battle is over and a usable snapshot exists. Returns the battle snapshot ({} when
+## none was read).
+func _poll_battle(state, run) -> Dictionary:
+	# A new battle starts fresh battle-scoped reaction tracking.
+	if not _was_battle:
+		_reaction_coordinator.reset_battle()
+		_debug_logger.log_battle_probe(state)
+
+	# Battle-scoped reactions are evaluated once the battle is over, against the
+	# final unit totals. The detector owns that timing; the completion is consumed
+	# only after a usable snapshot exists, so a partial read is retried next poll.
+	if _battle_completion == null or not _battle_completion.is_pending(state):
+		return {}
+	# During battle the player's run is the replay copy the game hands the
+	# battle state (verified in MyBattleStats/BatoEyes and BatomonHelperBridge);
+	# RunManager.data may already be the promoted/completed run.
+	var player_run = _get_battle_player_run(state, run)
+	var battle_snapshot: Dictionary = _snapshot_reader.read_battle(state, player_run)
+	var usable: bool = _snapshot_reader.is_battle_snapshot_usable(battle_snapshot)
+	_logger.log_event("BATTLE COMPLETE | usable=%s units=%s team=%s trainer=%s" % [
+		str(usable),
+		str(battle_snapshot.get("battle_units").size()) if battle_snapshot.get("battle_units") is Array else "absent",
+		str(battle_snapshot.get("team").size()) if battle_snapshot.get("team") is Array else "absent",
+		str(battle_snapshot.get("trainer_id", "absent")),
+	])
+	if not usable:
+		return battle_snapshot
+	_battle_completion.consume()
+	_debug_logger.log_battle_units(battle_snapshot)
+	_record_high_scores(battle_snapshot, HighScores.record_battle)
+	_reaction_coordinator.poll_battle_reactions(battle_snapshot)
+	return battle_snapshot
+
+
+## Record persistent high scores from a snapshot. `record_fn` is the store's
+## record_battle or record_run; saves only when a metric improves and logs each
+## new record.
+func _record_high_scores(snapshot: Dictionary, record_fn: Callable) -> void:
+	if _high_scores.is_empty():
 		return
-	var improved: Dictionary = _high_scores_script.record_run(_high_scores, run_snapshot)
+	var improved: Dictionary = record_fn.call(_high_scores, snapshot)
 	if improved.is_empty():
 		return
-	_high_scores_script.save_store(_high_scores)
+	HighScores.save_store(_high_scores)
 	_log_high_scores(improved)
 
 
@@ -302,7 +293,7 @@ func _log_high_scores(improved: Dictionary) -> void:
 		_logger.log_event("HIGH SCORE | %s %d by %s (was %d)" % [
 			str(metric),
 			int(row.get("value", 0)),
-			_high_scores_script.format_unit(str(row.get("unit", ""))),
+			HighScores.format_unit(str(row.get("unit", ""))),
 			int(row.get("previous", 0)),
 		])
 

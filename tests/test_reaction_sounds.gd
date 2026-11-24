@@ -5,14 +5,13 @@ extends "test_runner.gd"
 ## sound file is loaded, so adding a reaction sound cannot silently drift.
 
 const ReactionSounds = preload("../audio/reaction_sounds.gd")
-const ReactionEvaluator = preload("../reactions/reaction_evaluator.gd")
 const Catalog = preload("../catalog/brain_rot_catalog.gd")
 
 
 func _registered_ids() -> Dictionary:
 	var ids := {}
-	for entry in ReactionEvaluator.registered_rows():
-		ids[str(entry["row"].get("id", ""))] = true
+	for entry in Catalog.ENTRIES:
+		ids[str(entry.get("id", ""))] = true
 	return ids
 
 
